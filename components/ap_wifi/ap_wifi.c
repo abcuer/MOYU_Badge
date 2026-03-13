@@ -184,3 +184,12 @@ void ap_wifi_apcfg(bool enable)
         web_ws_start(&ws);
     }
 }
+
+void wifi_state_changed(WIFI_STATE state) 
+{
+    if (state == WIFI_STATE_CONNECTED) {
+        ESP_LOGI("MAIN", "WiFi Connected Successfully!");
+    } else {
+        ESP_LOGI("MAIN", "WiFi Disconnected.");
+    }
+}
