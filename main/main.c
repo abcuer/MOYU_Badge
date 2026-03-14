@@ -4,13 +4,17 @@
 #include "ws2812.h"
 #include "led.h"
 #include "bmp280.h"
+#include "mpu6050.h"
+#include "imu.h"
+#include "oled.h"
+#include "blood.h"
+#include "max30102.h"
 #include "nvs_flash.h"
 #include "onenet_mqtt.h"
+#include "onenet_dm.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
-#include "onenet_mqtt.h"
-#include "onenet_dm.h"
 
 #define TAG "MAIN"
 
@@ -48,41 +52,49 @@ void onenet_upload_task(void *pvParameters)
     }
 }
 
-static void wifi_state_callback(WIFI_STATE state)
-{
-    if(state == WIFI_STATE_CONNECTED)
-    {
-        xEventGroupSetBits(wifi_ev, WIFI_CONNECT_BIT);
-    }
-}
+// static void wifi_state_callback(WIFI_STATE state)
+// {
+//     if(state == WIFI_STATE_CONNECTED)
+//     {
+//         xEventGroupSetBits(wifi_ev, WIFI_CONNECT_BIT);
+//     }
+// }
 
 void app_main(void)
 {
     // 基础初始化
-    esp_err_t ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK(ret);
+    // esp_err_t ret = nvs_flash_init();
+    // if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    //     ESP_ERROR_CHECK(nvs_flash_erase());
+    //     ret = nvs_flash_init();
+    // }
+    // ESP_ERROR_CHECK(ret);
 
-    // 初始化事件组
-    wifi_ev = xEventGroupCreate();
+    // // 初始化事件组
+    // wifi_ev = xEventGroupCreate();
 
     // 硬件初始化
-    bmp280_init();
-
+    // bmp280_init();
+    mpu_init();
+    max30102_init();
+    u8g2_init();
+    OLED_DrawBluetoothIcon(48, 16);
     // 网络初始化
-    wifi_manager_init(wifi_state_callback);
-    wifi_manager_connect("MIKASAYA", "13531257359");
+    // wifi_manager_init(wifi_state_callback);
+    // wifi_manager_connect("MIKASAYA", "13531257359");
 
     // 创建上报任务 (任务内部会处理等待 WiFi 的逻辑)
-    xTaskCreate(onenet_upload_task, "onenet_upload_task", 1024 * 4, NULL, 5, NULL);
+    // xTaskCreate(onenet_upload_task, "onenet_upload_task", 1024 * 4, NULL, 5, NULL);
 
     // 重点：app_main 是一个任务，完成后必须进入阻塞或直接返回
     // 绝对不能写一个没有任何 delay 的空 while(1)
-    ESP_LOGI(TAG, "Main task finished, entering long delay.");
-    while(1) {
-        vTaskDelay(pdMS_TO_TICKS(10000)); 
+    while(1) 
+    {
+        BloodDataUpdate();     // 采集 512 个点
+        BloodDataTranslate();  // 算法处理
+        
+        printf("心率: %d bpm, 血氧: %.2f%%\n", b_data.heart, b_data.SpO2);
+        
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }

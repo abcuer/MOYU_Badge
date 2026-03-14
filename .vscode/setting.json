@@ -6,7 +6,7 @@
     "clangd.logLevel": "info",
     "clangd.arguments": [
         "--background-index",
-        "--compile-commands-dir=D:\\MCU\\3_ESP32S3\\esp32-s3\\02_components\\build",
+        "--compile-commands-dir=D:\\MCU\\3_ESP32S3\\esp32-s3\\esp32_mqtt_system\\build",
         "--header-filter=.*"
     ],
     "clangd.debug": true
