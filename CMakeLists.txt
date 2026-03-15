@@ -5,6 +5,7 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+# 根目录
 # 必须在 include 之前设置，注意路径层级
 set(EXTRA_COMPONENT_DIRS 
     "components/app"

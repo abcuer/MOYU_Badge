@@ -1,8 +1,9 @@
-#include "onenet_dm.h"
-#include "bmp280.h"
-#include "onenet_mqtt.h"
 #include <string.h>
 #include "esp_log.h"
+#include "bmp280.h"
+#include "onenet_dm.h"
+#include "onenet_mqtt.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -13,7 +14,6 @@ static const char *TAG = "onenet_dm";
  */
 void onenet_dm_init(void)
 {
-    // 移除了所有 GPIO、LEDC 和 WS2812 的初始化代码
     ESP_LOGI(TAG, "OneNET DM Sensor mode initialized.");
 }
 

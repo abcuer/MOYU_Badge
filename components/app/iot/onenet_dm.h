@@ -22,5 +22,5 @@ void onenet_property_handle(cJSON* property_js);
  * @return cJSON对象，包含所有属性值
  */
 cJSON* onenet_property_upload_dm(void);
-void onenet_upload_task(void *pvParameters);
+
 #endif
