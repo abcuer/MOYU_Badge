@@ -8,8 +8,7 @@
 // 零偏校准次数
 #define CALIBRATION_SAMPLES 200
 
-
-#define I2C_MASTER_NUM        0      // I2C 端口号
+#define I2C_MASTER_NUM        1      // I2C 端口号
 #define MPU6050_ADDR          0x68   // MPU6050 地址
 
 typedef struct{
@@ -30,7 +29,7 @@ typedef struct{
     float yaw;
 }EulerAngle_struct;
 
-void mpu_init(void);
+void mpu6050_init(void);
 void mpu_get_data(Acc_Struct *acc, Gyro_Struct *gyro);
 
 extern Acc_Struct acc;

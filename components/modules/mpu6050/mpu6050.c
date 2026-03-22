@@ -27,7 +27,7 @@ static void iic_init(void)
     i2c_device_config_t dev_config = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = MPU6050_ADDR,
-        .scl_speed_hz = 400000, // 400kHz 快速模式
+        .scl_speed_hz = 100000, // 100kHz 快速模式
     };
     ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_config, &mpu6050_handle));
 }
@@ -98,7 +98,7 @@ static void mpu_calibrate(void)
     gyro_offsets.z = sum_gz / CALIBRATION_SAMPLES;
 }
 
-void mpu_init(void) 
+void mpu6050_init(void) 
 {
     iic_init();
     // 1. 电源管理：唤醒并设置时钟源为 PLL X轴

@@ -37,7 +37,6 @@ compx EE(compx a, compx b);
 *****************************************************************/
 void FFT(compx *xin);
 
-
 typedef struct {
     int heart;      
     float SpO2;     

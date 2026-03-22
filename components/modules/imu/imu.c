@@ -37,13 +37,8 @@ void imu_get_angle(Acc_Struct *acc, Gyro_Struct *gyro, EulerAngle_struct *euler,
     float acc_pitch = -atan2f(ax, sqrtf(ay * ay + az * az)) * 57.29578f;
 
     // 3. 动态权重计算 (自适应互补滤波)
-    float accMagSq = ax * ax + ay * ay + az * az;
-    float alpha = 0.98f; // 默认权重，倾向于陀螺仪
-
-    // 如果加速度模长偏离 1g 太多，说明处于剧动或振动，降低加速度计的可信度
-    if (accMagSq > 1.44f || accMagSq < 0.64f) {
-        alpha = 0.999f; // 几乎完全信任陀螺仪
-    }
+    // float accMagSq = ax * ax + ay * ay + az * az;
+    float alpha = 0.55f; 
 
     // 4. 互补滤波融合
     // 融合公式: Angle = alpha * (上一次角度 + 陀螺仪积分) + (1 - alpha) * 加速度计角度

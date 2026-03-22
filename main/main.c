@@ -1,21 +1,6 @@
-#include <stdio.h>
-#include "esp_log.h"
+#include "headfile.h"
 
-#include "ws2812.h"
-#include "led.h"
-#include "bmp280.h"
-#include "mpu6050.h"
-#include "imu.h"
-#include "oled.h"
-#include "blood.h"
-#include "max30102.h"
-#include "nvs_flash.h"
-#include "wifi_manager.h"
-#include "user_task.h"
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/event_groups.h"
+#define TEST "HELLO"
 
 EventGroupHandle_t wifi_ev = NULL; // 定义全局变量
 
@@ -31,22 +16,32 @@ void app_main(void)
 {
     nvs_flash_init();
     wifi_ev = xEventGroupCreate(); // 必须最先创建！
+
+    // 同步时间
+    xTaskCreate(time_sync_task, "time_sync", 8192, NULL, 8, NULL);
+
     // WiFi 初始化
     wifi_manager_init(wifi_state_callback);
     wifi_manager_connect("MIKASAYA", "13531257359");
 
     // 硬件初始化
-    mpu_init();
+    key_device_init();
     max30102_init();
+    mpu6050_init();
+    // bmp280_init();   
     u8g2_init();
 
     // 启动任务
-    // xTaskCreate(start_mpu_task, "mpu_task", 4096, NULL, 5, NULL);
+    xTaskCreate(start_mpu_task, "mpu_task", 4096, NULL, 5, NULL);
+    xTaskCreate(start_oled_task, "oled_ui", 8192, NULL, 4, NULL);
     // xTaskCreate(start_detect_task, "blood_task", 4096, NULL, 5, NULL);
     // xTaskCreate(onenet_upload_task, "upload_task", 4096, NULL, 5, NULL);
 
-    // while(1) 
+    // while(1)
     // {
-
+    //     imu_get_angle(&acc, &gyro, &euler_angle, 20/1000.0f);
+    //     ESP_LOGI("MPU", "p:%.2f, r: %.2f, y:%.2f\n", euler_angle.pitch, euler_angle.roll, euler_angle.yaw);
+    //     vTaskDelay(pdMS_TO_TICKS(20));
     // }
+
 }

@@ -8,7 +8,7 @@ static iic_bus_t oled_bus = {
     .scl_io = OLED_SCL_PIN
 };
 
-static u8g2_t u8g2 = {0}; 
+u8g2_t u8g2 = {0}; 
 
 /**
  * @brief 统一写函数
@@ -88,7 +88,7 @@ static uint8_t u8x8_gpio_and_delay(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, v
     {
         case U8X8_MSG_DELAY_MILLI:
             // 使用你 bsp_delay.c 中的毫秒延时
-            delay_ms(arg_int); 
+            // delay_ms(arg_int); 
             break;
 
         case U8X8_MSG_DELAY_I2C:
