@@ -3,12 +3,13 @@
 
 #include "stdint.h"
 
+// 零偏校准次数
+#define CALIBRATION_SAMPLES 500
+
 #define MPU_SDA_PIN           7     
 #define MPU_SCL_PIN           6   
-// 零偏校准次数
-#define CALIBRATION_SAMPLES 200
 
-#define I2C_MASTER_NUM        1      // I2C 端口号
+#define MPU_IIC_BUS           1      // I2C 端口号
 #define MPU6050_ADDR          0x68   // MPU6050 地址
 
 typedef struct{

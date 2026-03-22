@@ -6,7 +6,6 @@ ui_mode_e selected_game = MODE_BALL;
 
 void draw_syncing_ui(u8g2_t *u8g2)
 {
-    // 1. 英文励志语（简练且高级）
     static const char *tips[] = {
         "Never Give Up",
         "A New Beginning",
@@ -18,61 +17,47 @@ void draw_syncing_ui(u8g2_t *u8g2)
 
     u8g2_ClearBuffer(u8g2);
 
-    // ── 顶部 ────────────────────────────────────────────────
-    u8g2_SetFont(u8g2, u8g2_font_6x12_tf); // 紧凑清晰的英文字体
-    u8g2_DrawStr(u8g2, 24, 12, "Syncing Time");
+    // ── 顶部状态栏 ───────────────────────────────────────────
+    u8g2_SetFont(u8g2, u8g2_font_6x12_tf); 
+    u8g2_DrawStr(u8g2, 22, 12, "Syncing Time"); // 稍微左移，腾出右侧空间
 
-    // 动态省略号（用 ms 计算，0.5秒步进）
+    // 1. 动态省略号（缩短点数，防止撞到计时器）
     int dot_idx = (ms_now / 500) % 4; 
     for(int i = 0; i < dot_idx; i++) {
-        u8g2_DrawStr(u8g2, 98 + (i * 4), 12, ".");
+        u8g2_DrawStr(u8g2, 34 + (i * 4), 12, ".");
     }
 
-    u8g2_DrawHLine(u8g2, 0, 16, 128); // 顶部视觉分割线
+    // 2. 新增：连接用时显示（靠右对齐）
+    char time_buf[16];
+    int seconds = ms_now / 1000;
+    snprintf(time_buf, sizeof(time_buf), "%ds", seconds);
+    int time_w = u8g2_GetStrWidth(u8g2, time_buf);
+    u8g2_DrawStr(u8g2, 126 - time_w, 12, time_buf); // 距离右边缘保留 2 像素
 
-    // ── 中部：励志语（大字号 + 像素级精准居中） ───────────────
-    int tip_idx = (ms_now / 3000) % 4; // 每 3 秒切一句
-    
-    // 使用大一点的英文字体让字处于 C 位
+    u8g2_DrawHLine(u8g2, 0, 16, 128); 
+
+    // ── 中部：励志语 ────────────────────────────────────────
+    int tip_idx = (ms_now / 3000) % 4; 
     u8g2_SetFont(u8g2, u8g2_font_7x14_tf); 
-    
-    // 获取当前英文句子的像素宽度，实现绝对居中
     int str_width = u8g2_GetStrWidth(u8g2, tips[tip_idx]);
-    int tip_x = (128 - str_width) / 2;
-    
-    u8g2_DrawStr(u8g2, tip_x, 38, tips[tip_idx]); // Y=38 垂直居中
+    u8g2_DrawStr(u8g2, (128 - str_width) / 2, 38, tips[tip_idx]); 
 
-    u8g2_DrawHLine(u8g2, 0, 48, 128); // 底部视觉分割线
+    u8g2_DrawHLine(u8g2, 0, 48, 128); 
 
-    // ── 底部：小球往前弹跳滚动 ─────────────────────────────
-    int track_y = 58;  // 轨道中心线位置
-    int track_x_start = 14;
-    int track_x_end = 114;
+    // ── 底部：小球动画 (保持原样) ───────────────────────────
+    int track_y = 58;
+    int track_x_start = 14, track_x_end = 114;
     int track_len = track_x_end - track_x_start;
-
-    // 绘制轨道槽 (两端圆角的跑道线)
     u8g2_DrawHLine(u8g2, track_x_start, track_y, track_len);
 
-    // 小球运动周期（2 秒跑一个来回）
     int cycle_ms = 2000;
-    int time_in_cycle = ms_now % cycle_ms;
-    float t = (float)time_in_cycle / cycle_ms; // 进度 0.0 ~ 1.0
-
-    int ball_x;
-    if (t <= 0.5f) {
-        // 前 50% 时间：从左走到右 (0.0 -> 0.5f 对应 0% -> 100%)
-        ball_x = track_x_start + (int)(t * 2.0f * track_len);
-    } else {
-        // 后 50% 时间：从右返回左
-        ball_x = track_x_end - (int)((t - 0.5f) * 2.0f * track_len);
-    }
-
-    // 小球半径为 3 像素，绘制实心圆球
+    float t = (float)(ms_now % cycle_ms) / cycle_ms; 
+    int ball_x = (t <= 0.5f) ? (track_x_start + (int)(t * 2.0f * track_len)) : 
+                               (track_x_end - (int)((t - 0.5f) * 2.0f * track_len));
     u8g2_DrawDisc(u8g2, ball_x, track_y, 3, U8G2_DRAW_ALL);
 
     u8g2_SendBuffer(u8g2);
 }
-
 void draw_main_clock_ui(u8g2_t *u8g2)
 {
     char buf[32];
@@ -108,26 +93,31 @@ void draw_main_clock_ui(u8g2_t *u8g2)
 
     // 列1: 温度
     u8g2_DrawStr(u8g2, 2, 46, "TEMP");
-    sprintf(buf, "%.1fC", 25.0f);
+    sprintf(buf, "%.1fC", bmp280.temperature);
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(u8g2, 2, 57, buf);
 
     // 列2: 气压
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
     u8g2_DrawStr(u8g2, 46, 46, "PRES");
-    sprintf(buf, "%.0fhPa", 1008.0f);
+    sprintf(buf, "%.0fhPa", bmp280.pressure);
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(u8g2, 44, 57, buf);
 
-    // 列3: 心率
+    // 列3: 步数
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-    u8g2_DrawStr(u8g2, 94, 46, "HR");
-    sprintf(buf, "%dbpm", 72);
+    u8g2_DrawStr(u8g2, 94, 46, "STEP");
+    sprintf(buf, "%ldstp", step_data.today_steps);
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     u8g2_DrawStr(u8g2, 90, 57, buf);
 
-    // ── 底部分割线（上移：76→60）─────────────────
+    // ── 底部双分割线（静态+动态） ──────────────────
+    // 1. 较上的静态线
     u8g2_DrawHLine(u8g2, 0, 60, 128);
+    // 2. 较下的动态线（15秒一轮，丝滑增长）
+    uint32_t ms_now = esp_timer_get_time() / 1000;
+    int progress_width = (ms_now % 15000) * 128 / 15000; // 计算 0-128 像素宽度
+    u8g2_DrawHLine(u8g2, 0, 62, progress_width);
 
     u8g2_SendBuffer(u8g2);
 }
@@ -140,23 +130,29 @@ typedef struct {
 
 void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
 {
-    // 使用 u8g2_font_open_iconic_all_2x_t 字库 (16x16 大小图标)
+    // 配置 App 信息（使用 u8g2_font_open_iconic_all_2x_t 图标库）
     static const game_info_t games[] = {
         [MODE_CLOCK] = {"Clock", 64 + 11}, // 钟表图标
-        [MODE_BALL]  = {"Ball",  64 + 4},  // 类似球体/圆环
-        [MODE_DINO]  = {"Dino",  64 + 23}, // 备用图标 (可查阅 u8g2 open_iconic 选你喜欢的)
-        [MODE_PLANE] = {"Plane", 64 + 16}, // 飞机/方向图标
+        [MODE_BALL]  = {"Ball",  64 + 4},  // 球体/圆环
+        [MODE_DINO]  = {"Dino",  64 + 23}, // 恐龙/小怪兽
+        [MODE_PLANE] = {"Plane", 64 + 16}, // 飞机/飞行物
+        [MODE_BLOOD]  = {"Spo2",  64 + 5},  // <--- 新增血氧，图标 64+5 是个漂亮的实心爱心❤️
     };
 
     static const ui_mode_e game_list[] = {
-        MODE_CLOCK, MODE_BALL, MODE_DINO, MODE_PLANE
+        MODE_CLOCK, MODE_BALL, MODE_DINO, MODE_PLANE, MODE_BLOOD // <--- 添加到轮播列表
     };
-    static const int game_count = 5;
+    
+    // 自动计算 App 数量，防止手动填错越界
+    const int game_count = sizeof(game_list) / sizeof(game_list[0]); 
 
-    // 1. 寻找当前选中索引
+    // 1. 寻找当前选中模式所在的索引 cur
     int cur = 0;
     for (int i = 0; i < game_count; i++) {
-        if (game_list[i] == selected) { cur = i; break; }
+        if (game_list[i] == selected) { 
+            cur = i; 
+            break; 
+        }
     }
     int left_i  = (cur - 1 + game_count) % game_count;
     int right_i = (cur + 1) % game_count;
@@ -173,15 +169,20 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
     u8g2_DrawTriangle(u8g2, 123, 32, 119, 28, 119, 36); // 右箭头 ▶
 
     // ── 左右侧文字（弱化显示） ───────────────────
-    u8g2_SetFont(u8g2, u8g2_font_5x8_tf);
-    u8g2_DrawStr(u8g2, 14, 35, games[game_list[left_i]].name);
-    u8g2_DrawStr(u8g2, 88, 35, games[game_list[right_i]].name);
+    u8g2_SetFont(u8g2, u8g2_font_4x6_tf); // 侧边用更窄的字体，防止重叠
+    
+    // 左边App名称 (居左)
+    u8g2_DrawStr(u8g2, 12, 35, games[game_list[left_i]].name);
+    
+    // 右边App名称 (向左靠齐，防止飞出屏幕)
+    int right_name_w = u8g2_GetStrWidth(u8g2, games[game_list[right_i]].name);
+    u8g2_DrawStr(u8g2, 116 - right_name_w, 35, games[game_list[right_i]].name);
 
-    // ── 中间选中卡片（圆角矩形 + 投影感） ─────────
+    // ── 中间选中卡片（圆角矩形 + 居中） ─────────
     int center_x = 44, center_y = 15, w = 40, h = 34;
     u8g2_DrawRFrame(u8g2, center_x, center_y, w, h, 4);     // 圆角卡片外框
     
-    // 绘制 16x16 图标 (居中)
+    // 绘制 16x16 居中图标
     u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_2x_t); 
     u8g2_DrawGlyph(u8g2, center_x + 12, center_y + 24, games[selected].icon_code);
 
@@ -190,6 +191,7 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
     int text_width = u8g2_GetStrWidth(u8g2, games[selected].name);
     int text_x = center_x + (w - text_width) / 2; // 文字水平居中
     
+    // Y轴微调：保证卡片底部和反相文字贴合漂亮
     u8g2_DrawBox(u8g2, text_x - 2, center_y + h - 1, text_width + 4, 11); // 黑色背景条
     u8g2_SetDrawColor(u8g2, 0); // 开启反色 (写白色)
     u8g2_DrawStr(u8g2, text_x, center_y + h + 8, games[selected].name);
@@ -651,6 +653,95 @@ void draw_plane_game(u8g2_t *u8g2)
     snprintf(score_str, sizeof(score_str), "SCORE:%04d", air_game.score);
     u8g2_SetFont(u8g2, u8g2_font_4x6_tf);
     u8g2_DrawStr(u8g2, 2, 8, score_str);
+
+    u8g2_SendBuffer(u8g2);
+}
+
+void draw_blood_ui(u8g2_t *u8g2)
+{
+    char buf[32];
+    u8g2_ClearBuffer(u8g2);
+
+    // ── 顶部标题 ─────────────────────────────
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+    u8g2_DrawStr(u8g2, 30, 9, "Health Monitor");
+    u8g2_DrawHLine(u8g2, 0, 11, 128);
+    u8g2_DrawHLine(u8g2, 0, 13, 128);
+
+    switch (b_state)
+    {
+        case BLOOD_IDLE:
+            // 提示放手指
+            u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+            u8g2_DrawStr(u8g2, 10, 35, "Place finger on");
+            u8g2_DrawStr(u8g2, 20, 47, "the sensor...");
+
+            // 动态闪烁的心形（用方块模拟）
+            if ((xTaskGetTickCount() / 500) % 2 == 0) {
+                u8g2_DrawBox(u8g2, 58, 53, 6, 6);
+                u8g2_DrawBox(u8g2, 64, 53, 6, 6);
+                u8g2_DrawBox(u8g2, 55, 56, 18, 4);
+                u8g2_DrawBox(u8g2, 58, 60, 12, 3);
+                u8g2_DrawBox(u8g2, 61, 63, 6, 2);
+            }
+            break;
+
+        case BLOOD_SAMPLING:
+        {
+            // 显示采集进度
+            u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+            u8g2_DrawStr(u8g2, 22, 30, "Measuring...");
+
+            // 进度条动画（根据时间流动）
+            static uint32_t sample_start = 0;
+            if (sample_start == 0) sample_start = xTaskGetTickCount();
+            uint32_t elapsed = xTaskGetTickCount() - sample_start;
+            int bar = (int)(elapsed / 51);  // 5120ms总时长，128px宽
+            if (bar > 128) bar = 128;
+
+            u8g2_DrawFrame(u8g2, 0, 38, 128, 8);   // 进度条外框
+            u8g2_DrawBox(u8g2, 0, 38, bar, 8);      // 进度填充
+
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
+            u8g2_DrawStr(u8g2, 2, 56, "Keep still...");
+
+            // 采集完重置起始时间
+            if (b_state != BLOOD_SAMPLING) sample_start = 0;
+            break;
+        }
+
+        case BLOOD_DONE:
+            // 显示心率
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
+            u8g2_DrawStr(u8g2, 2, 26, "Heart Rate");
+            u8g2_SetFont(u8g2, u8g2_font_logisoso16_tn);
+            snprintf(buf, sizeof(buf), "%3d", b_data.heart);
+            u8g2_DrawStr(u8g2, 2, 44, buf);
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
+            u8g2_DrawStr(u8g2, 52, 44, "bpm");
+
+            // 分割线
+            u8g2_DrawVLine(u8g2, 76, 15, 46);
+
+            // 显示血氧
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
+            u8g2_DrawStr(u8g2, 80, 26, "SpO2");
+            u8g2_SetFont(u8g2, u8g2_font_logisoso16_tn);
+            snprintf(buf, sizeof(buf), "%3d", (int)b_data.SpO2);
+            u8g2_DrawStr(u8g2, 80, 44, buf);
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
+            u8g2_DrawStr(u8g2, 112, 44, "%");
+
+            // 底部健康评估
+            u8g2_DrawHLine(u8g2, 0, 48, 128);
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
+            if (b_data.SpO2 >= 95 && b_data.heart >= 60 && b_data.heart <= 100) {
+                u8g2_DrawStr(u8g2, 20, 58, "Status: Normal");
+            } else {
+                u8g2_DrawStr(u8g2, 14, 58, "Status: Abnormal!");
+            }
+            break;
+    }
 
     u8g2_SendBuffer(u8g2);
 }

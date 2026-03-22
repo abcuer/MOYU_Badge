@@ -3,8 +3,10 @@
 
 #include <stdint.h>
 
-#define BMP_SDA_PIN             5
-#define BMP_SCL_PIN             4
+#define BMP_SDA_PIN         11
+#define BMP_SCL_PIN         10
+
+#define BMP_IIC_BUS         0
 #define BMP280_ADDR         0x76
 
 #define BMP280_REG_CALIB    0x88  // 补偿参数起始地址
@@ -22,6 +24,7 @@ typedef struct {
 typedef struct {
     float temperature;
     float pressure;
+    float altitude;
 } bmp280_data_t;
 
 void bmp280_init(void);

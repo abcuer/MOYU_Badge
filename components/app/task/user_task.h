@@ -6,8 +6,8 @@
 #define TIME_SYNC_BIT       BIT1 
 
 void time_sync_task(void *pvParameters);
-void start_mpu_task(void *p);
-void start_detect_task(void *p);
+void start_sensor_task(void *pvParameters);
+void start_sp02_task(void *pvParameters);
 void onenet_upload_task(void *pvParameters);
 void start_oled_task(void *pvParameters);
 

@@ -1,11 +1,7 @@
-#include "bloods.h"
-#include "max30102.h"
-#include "freertos/task.h"
-#include <math.h>
-#include <string.h>
+#include "headfile.h"
 
 BloodData_t b_data = {0};
-
+BloodTaskState_t b_state = BLOOD_IDLE;
 
 // ── 滑动平均缓冲 ─────────────────────────
 static uint32_t ir_buf[SMOOTH_SIZE]  = {0};
@@ -60,21 +56,14 @@ static uint32_t smooth(uint32_t *buf, uint32_t new_val)
 
 void blood_sample_once(void)
 {
-    // 1. 读一个点
     max30102_read_fifo();
-    if (fifo_ir < 10000) {
-        // 没有手指，重置
-        blood_reset();
-        return;
-    }
-
-    // 2. 滑动平均滤波
+    // 1. 滑动平均滤波
     uint32_t ir_s  = smooth(ir_buf,  fifo_ir);
     uint32_t red_s = smooth(red_buf, fifo_red);
     buf_idx++;
     if (buf_idx >= SMOOTH_SIZE) buf_full = true;
 
-    // 3. 更新DC分量（指数滑动平均）
+    // 2. 更新DC分量（指数滑动平均）
     if (dc_ir == 0) {
         dc_ir  = (float)ir_s;
         dc_red = (float)red_s;
@@ -83,7 +72,7 @@ void blood_sample_once(void)
         dc_red = DC_ALPHA * dc_red + (1.0f - DC_ALPHA) * red_s;
     }
 
-    // 4. 峰值检测（三点比较：prev2 < prev > current = 峰）
+    // 3. 峰值检测（三点比较：prev2 < prev > current = 峰）
     if (buf_full && ir_smooth_prev2 > 0)
     {
         bool is_peak   = (ir_smooth_prev > ir_smooth_prev2) &&
@@ -150,4 +139,23 @@ void blood_sample_once(void)
 
     ir_smooth_prev2 = ir_smooth_prev;
     ir_smooth_prev  = ir_s;
+}
+
+void blood_detect(void)
+{
+    // 检查手指
+    max30102_read_fifo();
+    if (fifo_ir < 10000) {
+        b_state = BLOOD_IDLE;
+        blood_reset();
+        return;  
+    }
+
+    b_state = BLOOD_SAMPLING;
+
+    blood_sample_once();
+
+    if (b_data.valid) {
+        b_state = BLOOD_DONE;
+    }
 }

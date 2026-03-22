@@ -5,7 +5,7 @@
 #include "freertos/FreeRTOS.h"
 
 #define SAMPLE_RATE_MS   10      // 采样间隔10ms = 100Hz
-#define SMOOTH_SIZE      8       // 滑动平均窗口
+#define SMOOTH_SIZE      10       // 滑动平均窗口
 #define PEAK_MIN_DIST    40      // 峰间最小距离(点数)，对应400ms = 150bpm上限
 #define PEAK_MIN_HEIGHT  500     // 峰谷最小幅度，过滤噪声
 
@@ -23,9 +23,11 @@ typedef enum {
 } BloodTaskState_t;
 
 extern BloodData_t b_data;
+extern BloodTaskState_t b_state;
 
 // 峰谷法核心函数
 void blood_sample_once(void);      // 采一个点并实时处理
 void blood_reset(void);            // 重置状态
+void blood_detect(void);
 
 #endif

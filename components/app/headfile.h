@@ -18,7 +18,6 @@
 #include "mpu6050.h"
 #include "imu.h"
 #include "oled.h"
-#include "blood.h"
 #include "max30102.h"
 #include "key.h"
 

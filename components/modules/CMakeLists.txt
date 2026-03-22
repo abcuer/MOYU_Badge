@@ -3,7 +3,6 @@
 file(GLOB_RECURSE SOURCES 
     "key/*.c"
     "led/*.c"
-    "button/*.c"
     "oled/*.c" 
     "oled/u8g2/*c"
     "ws2812/*c"
@@ -18,7 +17,6 @@ idf_component_register(
     INCLUDE_DIRS 
         "key"      
         "led"      
-        "button"
         "oled"
         "oled/u8g2"
         "ws2812"

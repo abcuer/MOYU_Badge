@@ -1,9 +1,10 @@
 #include "headfile.h"
 
-#define MPU_PERIOD      20
-#define MAX30102_PERIOD  50
+#define SENSOR_PERIOD   20
+#define SP02_PERIOD     10
+#define OLED_PERIOD     30
 #define onenet_PERIOD   1000
-#define OLED_PERIOD 50
+
 /**
  * @brief 时间同步任务：等待 WiFi 连接 -> 同步时间 -> 功成身退
  */
@@ -76,63 +77,37 @@ void time_sync_task(void *pvParameters)
     vTaskDelete(NULL);
 }
 
-void start_mpu_task(void *p)
+void start_sensor_task(void *pvParameters)
 {
-    static bool low_g_flag = false;
-    static bool impact_flag = false;
+    static int slow_counter = 0;
     while(1)
     {
-        imu_get_angle(&acc, &gyro, &euler_angle, MPU_PERIOD/1000.0f);
-        ESP_LOGI("MPU", "p:%.2f, r: %.2f, y:%.2f\n", euler_angle.pitch, euler_angle.roll, euler_angle.yaw);
         key_scan();
-        vTaskDelay(pdMS_TO_TICKS(MPU_PERIOD));
+
+        if(mode != MODE_BLOOD)
+            imu_get_angle(&acc, &gyro, &euler_angle, SENSOR_PERIOD/1000.0f);
+        if(mode == MODE_CLOCK)
+        {
+            step_detect(&acc);
+            slow_counter++;
+            if (slow_counter >= 10)  // 每100ms执行一次
+            {
+                slow_counter = 0;
+                bmp280_read_data(&bmp280);  
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(SENSOR_PERIOD));
     }
 }
 
-void start_detect_task(void *p)
+void start_sp02_task(void *pvParameters)
 {
-    BloodTaskState_t blood_state = BLOOD_IDLE;
-    while (1)
+    while(1)
     {
-        if (mode != MODE_BLOOD) {
-            blood_reset();
-            blood_state = BLOOD_IDLE;
-            vTaskDelay(pdMS_TO_TICKS(200));
-            continue;
-        }
-
-        // 检查手指
-        max30102_read_fifo();
-        if (fifo_ir < 10000) {
-            blood_state = BLOOD_IDLE;
-            blood_reset();
-            vTaskDelay(pdMS_TO_TICKS(200));
-            continue;
-        }
-
-        blood_state = BLOOD_SAMPLING;
-
-        // 逐点采样处理，每次只处理一个点
-        blood_sample_once();
-
-        // 有效结果就更新状态
-        if (b_data.valid) {
-            blood_state = BLOOD_DONE;
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(SAMPLE_RATE_MS));  // 10ms一个点
+        if(mode == MODE_BLOOD)  blood_detect();
+        vTaskDelay(pdMS_TO_TICKS(SP02_PERIOD));
     }
 }
-
-// void start_detect_task(void *p)
-// {
-//     while(1)
-//     {
-//         BloodDataUpdate();     // 采集 512 个点
-//         BloodDataTranslate();  // 算法处理
-//         vTaskDelay(pdMS_TO_TICKS(MAX30102_PERIOD)); 
-//     }
-// }
 
 void onenet_upload_task(void *pvParameters) 
 {
@@ -183,6 +158,7 @@ void start_oled_task(void *pvParameters)
                 case MODE_BALL:  draw_ball_game(&u8g2);     break;
                 case MODE_DINO:  draw_dino_game(&u8g2);     break;
                 case MODE_PLANE: draw_plane_game(&u8g2);    break;
+                case MODE_BLOOD: draw_blood_ui(&u8g2);      break;
                 default: break;
             }
         }

@@ -1,4 +1,5 @@
 #include "bmp280.h"
+#include "math.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 
@@ -75,7 +76,7 @@ void bmp280_init(void)
 {
     // 1. 配置总线
     i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = I2C_NUM_0,
+        .i2c_port = BMP_IIC_BUS,
         .sda_io_num = BMP_SDA_PIN,
         .scl_io_num = BMP_SCL_PIN,
         .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -101,6 +102,11 @@ void bmp280_init(void)
     ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, config_data, sizeof(config_data), -1));
 }
 
+float bmp280_get_altitude(float pressure_hpa, float local_sea_level_hpa)
+{
+    return 44330.0f * (1.0f - powf(pressure_hpa / local_sea_level_hpa, 1.0f / 5.255f));
+}
+
 /**
  * @brief 读取最终转换后的数值
  */
@@ -118,7 +124,6 @@ void bmp280_read_data(bmp280_data_t *bmp280)
         // 转换数值
         bmp280->temperature = bmp280_compensate_T(adc_T);
         bmp280->pressure = bmp280_compensate_P(adc_P);
-        
-        // ESP_LOGI(TAG, "Temp: %.2f C, Pres: %.2f hPa", bmp280->temperature, bmp280->pressure);
     }
+    // bmp280->altitude = bmp280_get_altitude(bmp280->pressure, 1000.0f);
 }

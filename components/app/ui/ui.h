@@ -4,20 +4,20 @@
 
 typedef enum {
     MODE_CLOCK = 0,    // 主界面：时钟+传感器
-    MODE_BLOOD,        // 血氧检测模式
     MODE_SELECT,       // 模式选择页面（短按切换游戏）
     MODE_BALL,         // 悬浮球
     MODE_DINO,         // 恐龙快跑
     MODE_PLANE,        // 飞机大战
+    MODE_BLOOD,        // 血氧检测模式
 } ui_mode_e;
 
 // 选择列表，包含主时钟
 static const ui_mode_e game_list[] = {
     MODE_CLOCK,   // 主时钟也在列表里
-    MODE_BLOOD,
     MODE_BALL,
     MODE_DINO,
     MODE_PLANE,
+    MODE_BLOOD,
 };
 
 /*
@@ -105,8 +105,11 @@ typedef struct {
 } AirGame_t;
 
 void draw_syncing_ui(u8g2_t *u8g2);
-void draw_main_clock_ui(u8g2_t *u8g2);
+
 void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected);
+
+void draw_main_clock_ui(u8g2_t *u8g2);
+
 void draw_ball_game(u8g2_t *u8g2);
 
 void draw_dino_game(u8g2_t *u8g2);
@@ -114,6 +117,8 @@ void dino_game_reset(DinoGame_t *game);
 
 void draw_plane_game(u8g2_t *u8g2);
 void air_game_reset(AirGame_t *game);
+
+void draw_blood_ui(u8g2_t *u8g2);
 
 // 声明全局游戏对象
 extern ui_mode_e mode;

@@ -14,34 +14,36 @@ static void wifi_state_callback(WIFI_STATE state)
 
 void app_main(void) 
 {
+    // ── 第一步：最高优先，WiFi尽早启动 ──────
     nvs_flash_init();
-    wifi_ev = xEventGroupCreate(); // 必须最先创建！
-
-    // 同步时间
-    xTaskCreate(time_sync_task, "time_sync", 8192, NULL, 8, NULL);
-
-    // WiFi 初始化
+    wifi_ev = xEventGroupCreate();
     wifi_manager_init(wifi_state_callback);
     wifi_manager_connect("MIKASAYA", "13531257359");
 
-    // 硬件初始化
+    // ── 第二步：立即启动依赖WiFi的任务 ──────
+    // WiFi已经在后台连接，这两个任务会自己等待连接成功
+    xTaskCreate(time_sync_task, "time_sync", 8192, NULL, 8, NULL);
+
+    // ── 第三步：初始化显示，尽早给用户反馈 ──
+    u8g2_init();
+    xTaskCreate(start_oled_task, "ui_task", 8192, NULL, 4, NULL);
+    // OLED任务会显示"同步时间中..."，用户知道设备在工作
+
+    // ── 第四步：其他硬件初始化 ───────────────
     key_device_init();
     max30102_init();
     mpu6050_init();
-    // bmp280_init();   
-    u8g2_init();
+    bmp280_init();
 
-    // 启动任务
-    xTaskCreate(start_mpu_task, "mpu_task", 4096, NULL, 5, NULL);
-    xTaskCreate(start_oled_task, "oled_ui", 8192, NULL, 4, NULL);
-    // xTaskCreate(start_detect_task, "blood_task", 4096, NULL, 5, NULL);
-    // xTaskCreate(onenet_upload_task, "upload_task", 4096, NULL, 5, NULL);
+    // ── 第五步：启动传感器任务 ───────────────
+    xTaskCreate(start_sensor_task, "sensor_task", 8192, NULL, 6, NULL);
+    xTaskCreate(start_sp02_task,   "sp02_task",   8192, NULL, 5, NULL);
+    // xTaskCreate(onenet_upload_task, "upload_task", 4096, NULL, 3, NULL);
 
     // while(1)
     // {
-    //     imu_get_angle(&acc, &gyro, &euler_angle, 20/1000.0f);
-    //     ESP_LOGI("MPU", "p:%.2f, r: %.2f, y:%.2f\n", euler_angle.pitch, euler_angle.roll, euler_angle.yaw);
+    //     bmp280_read_data(&bmp280);
+    //     ESP_LOGI("BMP", "Temp: %.2f C, Pres: %.2f hPa", bmp280.temperature, bmp280.pressure);
     //     vTaskDelay(pdMS_TO_TICKS(20));
     // }
-
 }
