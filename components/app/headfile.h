@@ -8,9 +8,10 @@
 #include "time.h"
 #include "cJSON.h"
 #include "esp_log.h"
-#include "esp_netif_sntp.h"
 #include "esp_timer.h"
 #include "esp_random.h"
+#include "esp_netif_sntp.h"
+#include "esp_http_client.h"
 
 #include "ws2812.h"
 #include "led.h"
@@ -28,6 +29,7 @@
 
 #include "mode.h"
 #include "bloods.h"
+#include "status.h"
 #include "ui.h"
 #include "user_task.h"
 

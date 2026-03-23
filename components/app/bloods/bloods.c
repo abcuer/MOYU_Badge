@@ -92,7 +92,7 @@ void blood_sample_once(void)
                 uint32_t interval_ms = (now_tick - peak_tick) * portTICK_PERIOD_MS;
 
                 // 心率合理范围：40~180 bpm → 间隔 333ms~1500ms
-                if (interval_ms > 333 && interval_ms < 1500)
+                if (interval_ms > 350 && interval_ms < 1500)
                 {
                     int hr_new = (int)(60000 / interval_ms);
 

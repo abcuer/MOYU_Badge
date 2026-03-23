@@ -19,12 +19,12 @@ void draw_syncing_ui(u8g2_t *u8g2)
 
     // ── 顶部状态栏 ───────────────────────────────────────────
     u8g2_SetFont(u8g2, u8g2_font_6x12_tf); 
-    u8g2_DrawStr(u8g2, 22, 12, "Syncing Time"); // 稍微左移，腾出右侧空间
+    u8g2_DrawStr(u8g2, 12, 12, "Syncing Time"); // 稍微左移，腾出右侧空间
 
-    // 1. 动态省略号（缩短点数，防止撞到计时器）
+    // 1. 动态省略号
     int dot_idx = (ms_now / 500) % 4; 
     for(int i = 0; i < dot_idx; i++) {
-        u8g2_DrawStr(u8g2, 34 + (i * 4), 12, ".");
+        u8g2_DrawStr(u8g2, 87 + (i * 4), 12, ".");
     }
 
     // 2. 新增：连接用时显示（靠右对齐）
@@ -58,9 +58,10 @@ void draw_syncing_ui(u8g2_t *u8g2)
 
     u8g2_SendBuffer(u8g2);
 }
+
 void draw_main_clock_ui(u8g2_t *u8g2)
 {
-    char buf[32];
+    char buf[64];
     time_t now;
     struct tm t;
 
@@ -70,45 +71,46 @@ void draw_main_clock_ui(u8g2_t *u8g2)
     u8g2_ClearBuffer(u8g2);
 
     // ── 顶部状态栏 ──────────────────────────────
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    sprintf(buf, "%04d-%02d-%02d", t.tm_year+1900, t.tm_mon+1, t.tm_mday);
-    u8g2_DrawStr(u8g2, 2, 9, buf);
-
     const char *days[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
-    u8g2_DrawStr(u8g2, 104, 9, days[t.tm_wday]);
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+    // 把 sprintf 改为 snprintf 防溢出，保持安全习惯
+    snprintf(buf, sizeof(buf), "%04d~%02d~%02d %s %s", t.tm_year+1900, t.tm_mon+1, t.tm_mday, days[t.tm_wday], weather_data.weather);
+    u8g2_DrawStr(u8g2, 1, 9, buf);
 
     u8g2_DrawHLine(u8g2, 0, 11, 128);
     u8g2_DrawHLine(u8g2, 0, 13, 128);
 
     // ── 时间：时:分:秒 ───────────────────────────
     u8g2_SetFont(u8g2, u8g2_font_logisoso16_tn);
-    sprintf(buf, "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+    snprintf(buf, sizeof(buf), "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
     u8g2_DrawStr(u8g2, 27, 34, buf);
 
     // ── 中部分割线（上移：53→37）─────────────────
     u8g2_DrawHLine(u8g2, 0, 37, 128);
 
     // ── 传感器区（整体上移约16px）────────────────
-    u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
 
-    // 列1: 温度
-    u8g2_DrawStr(u8g2, 2, 46, "TEMP");
-    sprintf(buf, "%.1fC", bmp280.temperature);
+    // 🔢 列1: 外温 (Open-Meteo网络获取)
+    u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
+    u8g2_DrawStr(u8g2, 2, 46, "TEMP_OUT");
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+
+    snprintf(buf, sizeof(buf), "%dC", weather_data.temp_now); 
     u8g2_DrawStr(u8g2, 2, 57, buf);
 
-    // 列2: 气压
+    // 🔢 列2: 海拔 (BMP280解算)
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-    u8g2_DrawStr(u8g2, 46, 46, "PRES");
-    sprintf(buf, "%.0fhPa", bmp280.pressure);
+    u8g2_DrawStr(u8g2, 46, 46, "ALT");
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+    snprintf(buf, sizeof(buf), "%.0fm", bmp280.altitude);
     u8g2_DrawStr(u8g2, 44, 57, buf);
 
-    // 列3: 步数
+    // 🔢 列3: 内温 (BMP280硬件实测室温)
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-    u8g2_DrawStr(u8g2, 94, 46, "STEP");
-    sprintf(buf, "%ldstp", step_data.today_steps);
+    u8g2_DrawStr(u8g2, 94, 46, "TEMP_IN"); // 标签改为 IN T (室内温度)
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+    // 修正 Bug: bmp280.temperature 是 float，需要用 %f。另外去掉 %ldstp 计步后缀
+    snprintf(buf, sizeof(buf), "%.1fC", bmp280.temperature); 
     u8g2_DrawStr(u8g2, 90, 57, buf);
 
     // ── 底部双分割线（静态+动态） ──────────────────
@@ -116,7 +118,7 @@ void draw_main_clock_ui(u8g2_t *u8g2)
     u8g2_DrawHLine(u8g2, 0, 60, 128);
     // 2. 较下的动态线（15秒一轮，丝滑增长）
     uint32_t ms_now = esp_timer_get_time() / 1000;
-    int progress_width = (ms_now % 15000) * 128 / 15000; // 计算 0-128 像素宽度
+    int progress_width = (ms_now % 15000) * 128 / 15000; 
     u8g2_DrawHLine(u8g2, 0, 62, progress_width);
 
     u8g2_SendBuffer(u8g2);
@@ -721,7 +723,7 @@ void draw_blood_ui(u8g2_t *u8g2)
             u8g2_DrawStr(u8g2, 52, 44, "bpm");
 
             // 分割线
-            u8g2_DrawVLine(u8g2, 76, 15, 46);
+            u8g2_DrawVLine(u8g2, 76, 15, 40);
 
             // 显示血氧
             u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
@@ -735,7 +737,7 @@ void draw_blood_ui(u8g2_t *u8g2)
             // 底部健康评估
             u8g2_DrawHLine(u8g2, 0, 48, 128);
             u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-            if (b_data.SpO2 >= 95 && b_data.heart >= 60 && b_data.heart <= 100) {
+            if (b_data.SpO2 >= 85 && b_data.heart >= 60 && b_data.heart <= 110) {
                 u8g2_DrawStr(u8g2, 20, 58, "Status: Normal");
             } else {
                 u8g2_DrawStr(u8g2, 14, 58, "Status: Abnormal!");

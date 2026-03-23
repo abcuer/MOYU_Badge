@@ -10,9 +10,6 @@
 #define STEP_MIN_INTERVAL_MS 250    // 两步最小间隔，防抖（对应240步/分钟上限）
 #define STEP_MAX_INTERVAL_MS 2000   // 两步最大间隔，超过认为停止走路
 
-// 滑动平均滤波（平滑SVM，减少毛刺）
-#define SVM_BUF_SIZE  4
-
 typedef struct {
     uint32_t total_steps;    // 总步数
     uint32_t today_steps;    // 今日步数
@@ -27,7 +24,7 @@ typedef enum {
 } StepFSM_t;
 
 void key_scan(void);
-void step_detect(Acc_Struct *acc);
+void step_detect(void);
 void step_reset_today(void);
 
 

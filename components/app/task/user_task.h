@@ -5,7 +5,12 @@
 #define WIFI_CONNECT_BIT    BIT0
 #define TIME_SYNC_BIT       BIT1 
 
-void time_sync_task(void *pvParameters);
+#define SENSOR_PERIOD   20
+#define SP02_PERIOD     10
+#define OLED_PERIOD     30
+#define onenet_PERIOD   1000
+
+void start_sync_task(void *pvParameters);
 void start_sensor_task(void *pvParameters);
 void start_sp02_task(void *pvParameters);
 void onenet_upload_task(void *pvParameters);

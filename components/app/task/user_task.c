@@ -1,84 +1,45 @@
 #include "headfile.h"
 
-#define SENSOR_PERIOD   20
-#define SP02_PERIOD     10
-#define OLED_PERIOD     30
-#define onenet_PERIOD   1000
+EventGroupHandle_t wifi_ev = NULL; // 定义全局变量
 
-/**
- * @brief 时间同步任务：等待 WiFi 连接 -> 同步时间 -> 功成身退
- */
-static const char *TAG_TIME = "NTP_TIME";
-
-/**
- * @brief 设置北京时区
- */
-static void set_timezone(void)
+static void wifi_state_callback(WIFI_STATE state)
 {
-    setenv("TZ", "CST-8", 1);
-    tzset();
-    ESP_LOGI(TAG_TIME, "时区设置为北京时间 (CST-8)");
+    if(state == WIFI_STATE_CONNECTED)
+    {
+        xEventGroupSetBits(wifi_ev, WIFI_CONNECT_BIT);
+    }
 }
 
 /**
- * @brief 打印当前系统时间
+ * @brief 同步任务：等待 WiFi 连接 -> 初始化 SNTP -> 等待对时成功
  */
-static void print_current_time(void)
+void start_sync_task(void *pvParameters)
 {
-    time_t now = time(NULL);
-    struct tm timeinfo;
-    char buffer[64];
+    wifi_manager_init(wifi_state_callback);
+    wifi_manager_connect("MIKASAYA", "13531257359");
 
-    localtime_r(&now, &timeinfo);
-    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S %A", &timeinfo);
-
-    ESP_LOGI(TAG_TIME, "当前时间: %s", buffer);
-}
-
-/**
- * @brief 时间同步任务：等待 WiFi 连接 -> 初始化 SNTP -> 等待对时成功
- */
-void time_sync_task(void *pvParameters)
-{
     xEventGroupWaitBits(wifi_ev, WIFI_CONNECT_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
     vTaskDelay(pdMS_TO_TICKS(500));
-    set_timezone();
-
-    // 同时配置3个服务器，用直接IP避免DNS问题
-    esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(3,
-        ESP_SNTP_SERVER_LIST(
-            "166.111.206.172"  // 清华源 直接IP
-            "120.25.115.20",   // 腾讯云 直接IP
-            "203.107.6.88",    // 阿里云 直接IP
-        )
-    );
-    esp_netif_sntp_init(&config);
-
-    // 超时改为60秒，给足时间
-    esp_err_t err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(60000));
-    if (err == ESP_OK) {
-        ESP_LOGI(TAG_TIME, "✅ NTP 时间同步成功！");
-    } else {
-        ESP_LOGW(TAG_TIME, "⚠️ 同步超时，使用备用方案重试");
-        // 超时后销毁重建，强制重试一次
-        esp_netif_sntp_deinit();
-        vTaskDelay(pdMS_TO_TICKS(3000));
-
-        esp_sntp_config_t retry_config = ESP_NETIF_SNTP_DEFAULT_CONFIG("166.111.206.172");
-        esp_netif_sntp_init(&retry_config);
-        esp_netif_sntp_sync_wait(pdMS_TO_TICKS(30000));
-    }
-
-    print_current_time();
-    esp_netif_sntp_deinit();
+    // 获取时间和天气信息
+    fetch_time();
+    fetch_weather();
     // ← 无论成功失败，都放行其他任务（失败也总比卡死好）
     xEventGroupSetBits(wifi_ev, TIME_SYNC_BIT);
 
-    vTaskDelete(NULL);
+    // 不销毁任务，每30分钟刷新一次天气
+    while (1) 
+    {
+        vTaskDelay(pdMS_TO_TICKS(30 * 60 * 1000));
+        fetch_weather();
+    }
 }
 
 void start_sensor_task(void *pvParameters)
 {
+    key_device_init();
+    mpu6050_init();
+    bmp280_init();
+
     static int slow_counter = 0;
     while(1)
     {
@@ -88,7 +49,7 @@ void start_sensor_task(void *pvParameters)
             imu_get_angle(&acc, &gyro, &euler_angle, SENSOR_PERIOD/1000.0f);
         if(mode == MODE_CLOCK)
         {
-            step_detect(&acc);
+            // step_detect();
             slow_counter++;
             if (slow_counter >= 10)  // 每100ms执行一次
             {
@@ -102,6 +63,7 @@ void start_sensor_task(void *pvParameters)
 
 void start_sp02_task(void *pvParameters)
 {
+    max30102_init();
     while(1)
     {
         if(mode == MODE_BLOOD)  blood_detect();
@@ -138,6 +100,7 @@ void onenet_upload_task(void *pvParameters)
 
 void start_oled_task(void *pvParameters)
 {
+    u8g2_init();
     while (!(xEventGroupGetBits(wifi_ev) & TIME_SYNC_BIT)) {
         draw_syncing_ui(&u8g2);
         vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD));

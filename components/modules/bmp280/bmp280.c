@@ -2,8 +2,7 @@
 #include "math.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
-
-#define TAG "BMP280"
+#include "status.h"
 
 bmp280_data_t bmp280 = {0};
 i2c_master_dev_handle_t dev_handle;
@@ -18,7 +17,7 @@ static void bmp280_get_calib_params(void)
     uint8_t reg_addr = BMP280_REG_CALIB;
     uint8_t data[24];
     
-    ESP_ERROR_CHECK(i2c_master_transmit_receive(dev_handle, &reg_addr, 1, data, 24, -1));
+    i2c_master_transmit_receive(dev_handle, &reg_addr, 1, data, 24, -1);
 
     calib_data.dig_T1 = (data[1] << 8) | data[0];
     calib_data.dig_T2 = (data[3] << 8) | data[2];
@@ -84,27 +83,30 @@ void bmp280_init(void)
         .flags.enable_internal_pullup = true, 
     };
     i2c_master_bus_handle_t bus_handle;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus_handle));
+    i2c_new_master_bus(&bus_cfg, &bus_handle);
 
     // 2. 添加设备到总线
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = BMP280_ADDR,
-        .scl_speed_hz = 400 * 1000, // 400kHz
+        .scl_speed_hz = 100 * 1000, // 400kHz
     };
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
+    i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
 
     // 获取补偿参数
     bmp280_get_calib_params();
 
     // 3. 配置 BMP280 (写 0xF4 设置为 Normal Mode)
     uint8_t config_data[] = {BMP280_REG_CTRL, 0x27}; // 压力x1, 温度x1, Normal模式
-    ESP_ERROR_CHECK(i2c_master_transmit(dev_handle, config_data, sizeof(config_data), -1));
+    i2c_master_transmit(dev_handle, config_data, sizeof(config_data), -1);
 }
 
-float bmp280_get_altitude(float pressure_hpa, float local_sea_level_hpa)
+static float bmp280_get_altitude(float pressure_hpa)
 {
-    return 44330.0f * (1.0f - powf(pressure_hpa / local_sea_level_hpa, 1.0f / 5.255f));
+    float p0 = (weather_data.sea_level_hpa > 900.0f)
+            ? weather_data.sea_level_hpa   // 有网络数据用实时值
+            : 1013.25f;                     // 没有则用标准值
+    return 44330.0f * (1.0f - powf(pressure_hpa / p0, 1.0f / 5.255f));
 }
 
 /**
@@ -124,6 +126,6 @@ void bmp280_read_data(bmp280_data_t *bmp280)
         // 转换数值
         bmp280->temperature = bmp280_compensate_T(adc_T);
         bmp280->pressure = bmp280_compensate_P(adc_P);
+        bmp280->altitude = bmp280_get_altitude(bmp280->pressure);
     }
-    // bmp280->altitude = bmp280_get_altitude(bmp280->pressure, 1000.0f);
 }

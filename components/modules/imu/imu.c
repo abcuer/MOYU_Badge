@@ -18,7 +18,6 @@ static inline float invSqrt(float x)
 
 void imu_get_angle(Acc_Struct *acc, Gyro_Struct *gyro, EulerAngle_struct *euler, float dt)
 {
-    
     // 0. 获取校准后的干净数据
     mpu_get_data(acc, gyro);
     // 1. 转换为物理量

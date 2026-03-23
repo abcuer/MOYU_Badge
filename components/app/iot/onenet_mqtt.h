@@ -2,14 +2,16 @@
 #define _ONENET_MQTT_H_
 #include "esp_err.h"
 
+// ESP32摸鱼工牌
+
 //产品ID
-#define  ONENET_PRODUCT_ID  "CzA3rl3360"
+#define  ONENET_PRODUCT_ID  "Jb17PAMZAf"
 
 //产品秘钥
-#define  ONENET_ACCESS_KEY  "cx9T+aepf/8tsx+TMSmdtcnjV8MN2V0BZ1uHSxl9T7k="
+#define  ONENET_ACCESS_KEY  "Xztvsyc7xZvpCcmtr0sVuc0nB0Gl17OdC7OTe1/L9z8="
 
 //设备名称
-#define ONENET_DEVICE_NAME  "bmp280"
+#define ONENET_DEVICE_NAME  "Total"
 
 /**
  * 上报数据

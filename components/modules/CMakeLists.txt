@@ -27,5 +27,6 @@ idf_component_register(
         "." 
 
     REQUIRES 
-        bsp esp_driver_gpio esp_timer esp_driver_i2c espressif__led_strip freertos
+        app bsp 
+        esp_driver_gpio esp_timer esp_driver_i2c espressif__led_strip freertos
 )

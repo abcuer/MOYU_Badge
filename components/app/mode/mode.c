@@ -60,74 +60,82 @@ void key_scan(void)
     }
 }
 
+
+
+// 滑动平均滤波（平滑SVM，减少毛刺）
+#define SVM_BUF_SIZE 5
+
 static StepFSM_t  fsm_state    = STEP_STATE_IDLE;
 static uint32_t   last_step_tick = 0;   // 上一步的时间戳
 
 static float svm_buf[SVM_BUF_SIZE] = {0};
 static int   svm_idx = 0;
 
+StepData_t step_data = {0};
+
 static float svm_smooth(float new_val)
 {
-    svm_buf[svm_idx % SVM_BUF_SIZE] = new_val;
-    svm_idx++;
+    svm_buf[svm_idx] = new_val;
+    // 限制 svm_idx 永远在 [0, SVM_BUF_SIZE - 1] 之间，绝不溢出
+    svm_idx = (svm_idx + 1) % SVM_BUF_SIZE; 
+
     float sum = 0;
     for (int i = 0; i < SVM_BUF_SIZE; i++) sum += svm_buf[i];
     return sum / SVM_BUF_SIZE;
 }
 
-StepData_t step_data = {0};
-void step_detect(Acc_Struct *acc)
+void step_detect(void)
 {
-    // 1. 计算合加速度（单位：g）
-    float svm = sqrtf(acc->x*acc->x + acc->y*acc->y + acc->z*acc->z);
-
-    // 2. 滑动平均滤波
+    mpu_get_data(&acc, &gyro);
+    
+    float svm = sqrtf(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z) / 16384.0f;
     float svm_f = svm_smooth(svm);
-
+    ESP_LOGI("SVM", "SVM: %.2f", svm_f);
+    ESP_LOGI("SVM", "STEP: %u", (unsigned int)step_data.today_steps);
     uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
 
     switch (fsm_state)
     {
         case STEP_STATE_IDLE:
-            // SVM 超过高阈值，进入 HIGH 状态
             if (svm_f > STEP_THRESHOLD_HIGH) {
                 fsm_state = STEP_STATE_HIGH;
             }
             break;
 
         case STEP_STATE_HIGH:
-            // SVM 下降到低阈值以下，认为完成一步
-            if (svm_f < STEP_THRESHOLD_LOW)
-            {
+            if (svm_f < STEP_THRESHOLD_LOW){ 
                 uint32_t interval = now - last_step_tick;
 
-                // 防抖：间隔在合理范围内才计步
-                if (last_step_tick == 0 ||
-                   (interval > STEP_MIN_INTERVAL_MS &&
-                    interval < STEP_MAX_INTERVAL_MS))
+                // 1. 只有开机第一次，或者间隔时间在正常人类迈步范围内(如 200ms ~ 2000ms)
+                if (last_step_tick == 0 || (interval > STEP_MIN_INTERVAL_MS && interval < STEP_MAX_INTERVAL_MS))
                 {
                     step_data.total_steps++;
                     step_data.today_steps++;
 
-                    // 计算步频（bpm）
-                    if (last_step_tick > 0 && interval < STEP_MAX_INTERVAL_MS) {
+                    if (last_step_tick > 0) {
                         step_data.cadence = 60000.0f / interval;
                         step_data.is_walking = true;
                     }
-                    last_step_tick = now;
+                    
+                    last_step_tick = now; // ✅ 只有计步成功，才把这步作为“下一步的基准”
                 }
+                // 2. 如果甩得太快，判定为杂波噪声，直接忽略，【千万不要更新 last_step_tick】
+                
+                fsm_state = STEP_STATE_IDLE; 
+            }
+            // 超时检测：如果卡在高电平太久(比如静止不动了)，强制踢回 IDLE
+            else if (now - last_step_tick > STEP_MAX_INTERVAL_MS) {
                 fsm_state = STEP_STATE_IDLE;
             }
             break;
     }
 
-    // 超过2秒没有新步伐，认为停止走路
-    if (last_step_tick > 0 && (now - last_step_tick) > STEP_MAX_INTERVAL_MS) {
+    // 超过2秒没动静，清除走路标志
+    if (now - last_step_tick > STEP_MAX_INTERVAL_MS) {
         step_data.is_walking = false;
         step_data.cadence    = 0;
     }
 }
-
 void step_reset_today(void)
 {
     step_data.today_steps = 0;
