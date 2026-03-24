@@ -39,6 +39,7 @@ void start_sensor_task(void *pvParameters)
     key_device_init();
     mpu6050_init();
     bmp280_init();
+    max30102_init();
 
     static int slow_counter = 0;
     while(1)
@@ -47,9 +48,12 @@ void start_sensor_task(void *pvParameters)
 
         if(mode != MODE_BLOOD)
             imu_get_angle(&acc, &gyro, &euler_angle, SENSOR_PERIOD/1000.0f);
+        
+        if(mode == MODE_BLOOD) 
+            blood_detect();
+
         if(mode == MODE_CLOCK)
         {
-            // step_detect();
             slow_counter++;
             if (slow_counter >= 10)  // 每100ms执行一次
             {
@@ -58,16 +62,6 @@ void start_sensor_task(void *pvParameters)
             }
         }
         vTaskDelay(pdMS_TO_TICKS(SENSOR_PERIOD));
-    }
-}
-
-void start_sp02_task(void *pvParameters)
-{
-    max30102_init();
-    while(1)
-    {
-        if(mode == MODE_BLOOD)  blood_detect();
-        vTaskDelay(pdMS_TO_TICKS(SP02_PERIOD));
     }
 }
 
@@ -122,6 +116,7 @@ void start_oled_task(void *pvParameters)
                 case MODE_DINO:  draw_dino_game(&u8g2);     break;
                 case MODE_PLANE: draw_plane_game(&u8g2);    break;
                 case MODE_BLOOD: draw_blood_ui(&u8g2);      break;
+                case MODE_SETTING: draw_setting_ui(&u8g2);  break;
                 default: break;
             }
         }

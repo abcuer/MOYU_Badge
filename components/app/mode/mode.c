@@ -1,6 +1,6 @@
 #include "headfile.h"
 
-static const int game_count = 5;
+static const int game_count = 6;
 // 是否处于"选择模式"（覆盖在当前界面上）
 bool in_select = false;
 

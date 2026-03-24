@@ -21,15 +21,16 @@ void max30102_init(void)
     
     max30102_write_reg(REG_MODE_CONFIG, 0x40);   // 复位
     delay_ms(50);  
+
+    // 100Hz 采样率下，平均2次，等于每 20ms 吐出一组数据
+    max30102_write_reg(REG_FIFO_CONFIG, 0x3F);   
     
-    max30102_write_reg(REG_FIFO_CONFIG, 0x5F);   // 平均采样4次，使能滚动
     max30102_write_reg(REG_MODE_CONFIG, 0x03);   // SpO2模式 (Red + IR)
     max30102_write_reg(REG_SPO2_CONFIG, 0x27);   // 100Hz, 16bit精度
     max30102_write_reg(REG_LED1_PA, 0x24);       // LED电流 7.2mA
     max30102_write_reg(REG_LED2_PA, 0x24);       
     max30102_write_reg(REG_PILOT_PA, 0x7F);      
 }
-
 /**
  * @brief 从 FIFO 读取一组原始数据
  */

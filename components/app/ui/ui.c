@@ -88,30 +88,28 @@ void draw_main_clock_ui(u8g2_t *u8g2)
     // ── 中部分割线（上移：53→37）─────────────────
     u8g2_DrawHLine(u8g2, 0, 37, 128);
 
-    // ── 传感器区（整体上移约16px）────────────────
-
-    // 🔢 列1: 外温 (Open-Meteo网络获取)
+    // ── 传感器区 ────────────────
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-    u8g2_DrawStr(u8g2, 2, 46, "TEMP_OUT");
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
 
+    // 🔢 列1: 外温 (精简字符为 OUT_T 避免和中间打架)
+    u8g2_DrawStr(u8g2, 2, 45, "OUT_T"); 
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     snprintf(buf, sizeof(buf), "%dC", weather_data.temp_now); 
     u8g2_DrawStr(u8g2, 2, 57, buf);
 
-    // 🔢 列2: 海拔 (BMP280解算)
+    // 🔢 列2: 海拔 (完美居中 X=45)
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-    u8g2_DrawStr(u8g2, 46, 46, "ALT");
+    u8g2_DrawStr(u8g2, 45, 45, "ALT"); 
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     snprintf(buf, sizeof(buf), "%.0fm", bmp280.altitude);
-    u8g2_DrawStr(u8g2, 44, 57, buf);
+    u8g2_DrawStr(u8g2, 45, 57, buf); // 对齐 X=45
 
-    // 🔢 列3: 内温 (BMP280硬件实测室温)
+    // 🔢 列3: 内温 (精简字符为 IN_T)
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-    u8g2_DrawStr(u8g2, 94, 46, "TEMP_IN"); // 标签改为 IN T (室内温度)
+    u8g2_DrawStr(u8g2, 88, 45, "IN_T"); // 从 X=88 往右渲染
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    // 修正 Bug: bmp280.temperature 是 float，需要用 %f。另外去掉 %ldstp 计步后缀
     snprintf(buf, sizeof(buf), "%.1fC", bmp280.temperature); 
-    u8g2_DrawStr(u8g2, 90, 57, buf);
+    u8g2_DrawStr(u8g2, 88, 57, buf); // 对齐 X=88
 
     // ── 底部双分割线（静态+动态） ──────────────────
     // 1. 较上的静态线
@@ -139,10 +137,11 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
         [MODE_DINO]  = {"Dino",  64 + 23}, // 恐龙/小怪兽
         [MODE_PLANE] = {"Plane", 64 + 16}, // 飞机/飞行物
         [MODE_BLOOD]  = {"Spo2",  64 + 5},  // <--- 新增血氧，图标 64+5 是个漂亮的实心爱心❤️
+        [MODE_SETTING] = {"Setting",   64 + 3},
     };
 
     static const ui_mode_e game_list[] = {
-        MODE_CLOCK, MODE_BALL, MODE_DINO, MODE_PLANE, MODE_BLOOD // <--- 添加到轮播列表
+        MODE_CLOCK, MODE_BALL, MODE_DINO, MODE_PLANE, MODE_BLOOD, MODE_SETTING // <--- 添加到轮播列表
     };
     
     // 自动计算 App 数量，防止手动填错越界
@@ -744,6 +743,80 @@ void draw_blood_ui(u8g2_t *u8g2)
             }
             break;
     }
+
+    u8g2_SendBuffer(u8g2);
+}
+
+void draw_setting_ui(u8g2_t *u8g2)
+{
+    u8g2_ClearBuffer(u8g2);
+
+    // 获取系统毫秒时间
+    uint32_t ms_now = esp_timer_get_time() / 1000; 
+
+    // ── 1. 顶部：- SYSTEM INFO - ───────────────────
+    // 使用优雅的 6x12 字体
+    u8g2_SetFont(u8g2, u8g2_font_6x12_tf); 
+    u8g2_DrawStr(u8g2, 16, 10, "- SYSTEM INFO -");
+    u8g2_DrawHLine(u8g2, 0, 12, 128);
+
+    // ── 2. 中间：信息展示区 (图标+文字组合) ──────────────
+    
+    // --- Bilibili 行 ---
+    // 选用 12x12 的图标库 (2x 代表 16x16，1x 代表 8x8，这里选 1x 并微调)
+    u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_1x_t); 
+    // 绘制小电视/屏幕图标 (代码 64+19)
+    u8g2_DrawGlyph(u8g2, 2, 26, 64 + 19); 
+
+    // 切换回标准清晰字体
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf); 
+    u8g2_DrawStr(u8g2, 14, 26, "Bili  : FASQwQ"); // 使用缩写
+
+    // --- Github 行 ---
+    u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_1x_t); 
+    // 绘制一个类似 Git 分支/代码/章鱼猫头部的图标 (代码 64+2 类似小头，或者 64+4 类似 Git 符号)
+    // 这里选用 64+4，它是一个 Git 分支符号，非常硬核
+    u8g2_DrawGlyph(u8g2, 2, 40, 64 + 4); 
+
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+    u8g2_DrawStr(u8g2, 14, 40, "Github:"); // 往下挪一点，保持间距
+
+    // ── 3. Github 长文本滚动区域 (裁剪窗口) ───────────
+    const char *github_link = "github.com/abcuer";
+    int github_x_start = 56; // 起始 X 坐标微调对齐文字
+    int github_width = 128 - github_x_start - 2; 
+
+    // 设置 U8G2 裁剪窗口
+    u8g2_SetMaxClipWindow(u8g2); 
+    u8g2_SetClipWindow(u8g2, github_x_start, 30, 128 - 2, 42); 
+
+    int text_len = u8g2_GetStrWidth(u8g2, github_link);
+    int scroll_offset = (ms_now / 30) % (text_len + github_width); 
+    int cur_x = (github_x_start + github_width) - scroll_offset;
+
+    u8g2_DrawStr(u8g2, cur_x, 40, github_link);
+    u8g2_SetMaxClipWindow(u8g2); // 恢复全屏画布
+
+    u8g2_DrawHLine(u8g2, 0, 44, 128); // 底部线稍微往上提
+
+    // ── 4. 底部：励志语 (3秒一切换) ───────────────────
+    static const char *motto[] = {
+        "Keep On Loving",
+        "World Peace",
+        "Code Changes World",
+        "Power on, Game on!",
+        "Hello World!",
+        "Overclock your life",
+        "Make debug, not war",
+        "Peace & Love",
+        "No reset, no regret"
+    };
+    int motto_count = sizeof(motto) / sizeof(motto[0]);
+    int motto_idx = (ms_now / 3000) % motto_count; 
+    int motto_w = u8g2_GetStrWidth(u8g2, motto[motto_idx]);
+    
+    // 居中显示在最底部
+    u8g2_DrawStr(u8g2, (128 - motto_w) / 2, 55, motto[motto_idx]);
 
     u8g2_SendBuffer(u8g2);
 }
