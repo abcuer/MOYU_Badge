@@ -1,35 +1,72 @@
-| Supported Targets | ESP32 | ESP32-C2 | ESP32-C3 | ESP32-C6 | ESP32-H2 | ESP32-P4 | ESP32-S2 | ESP32-S3 |
-| ----------------- | ----- | -------- | -------- | -------- | -------- | -------- | -------- | -------- |
+# 🐟 ESP32 摸鱼工牌
 
-# _Sample project_
+> **项目简介**：基于 ESP32-S3 的智能工牌，集成了环境监测、健康检测、经典小游戏及桌面时钟功能，支持 Wi-Fi 自动配网与天气同步。
 
-(See the README.md file in the upper level 'examples' directory for more information about examples.)
+---
 
-This is the simplest buildable example. The example is used by command `idf.py create-project`
-that copies the project to user specified path and set it's name. For more information follow the [docs page](https://docs.espressif.com/projects/esp-idf/en/latest/api-guides/build-system.html#start-a-new-project)
+## 🛠️ 开发环境与工具链
 
+* **开发 IDE**：Visual Studio Code (VS Code)
+* **开发框架**：ESP-IDF (Espressif IoT Development Framework)
+* **实时操作系统**：FreeRTOS
 
+---
 
-## How to use example
-We encourage the users to use the example as a template for the new projects.
-A recommended way is to follow the instructions on a [docs page](https://docs.espressif.com/projects/esp-idf/en/latest/api-guides/build-system.html#start-a-new-project).
+## 🧠 系统架构 (FreeRTOS 机制)
 
-## Example folder contents
+项目核心基于 FreeRTOS 实现多任务并发与资源同步：
+* **任务调度**：多任务并行（UI 刷新、传感器数据采集、网络通信等）。
+* **信号量 (Semaphore)**：用于按键状态的高效传递（按键中断触发二值信号量）。
+* **事件组 (Event Groups)**：用于 Wi-Fi 连接状态、配网状态等多状态联合同步。
 
-The project **sample_project** contains one source file in C language [main.c](main/main.c). The file is located in folder [main](main).
+---
 
-ESP-IDF projects are built using CMake. The project build configuration is contained in `CMakeLists.txt`
-files that provide set of directives and instructions describing the project's source files and targets
-(executable, library, or both). 
+## 🔌 硬件组成
 
-Below is short explanation of remaining files in the project folder.
+### 1. 核心与显示
+* **主控**：ESP32-S3 核心板 (支持 Wi-Fi & 蓝牙)
+* **显示**：0.96 寸 OLED 屏幕 (I2C 接口)
 
-```
-├── CMakeLists.txt
-├── main
-│   ├── CMakeLists.txt
-│   └── main.c
-└── README.md                  This is the file you are currently reading
-```
-Additionally, the sample project contains Makefile and component.mk files, used for the legacy Make based build system. 
-They are not used or needed when building with CMake and idf.py.
+### 2. 交互与传感器
+| 硬件模块 | 芯片/元件 | 实现功能 |
+| :--- | :--- | :--- |
+| **交互按键** | 独立按键 $\times 1$ | 短按切换 / 长按确认，实现单按键全局 UI 控制 |
+| **姿态传感器** | MPU6050 | 采集 6 轴姿态角，用于游戏体感控制 |
+| **气压/温度** | BMP280 | 采集实时环境温度与当地海拔数据 |
+| **生物检测** | MAX30102 | 采集心率、血氧饱和度 (SpO2) 数据 |
+
+---
+
+## 🚀 核心功能
+
+### 📶 网络与云端同步
+* **SmartConfig / AP 配网**
+    * 新设备首次开机自动进入 AP 配网模式。
+    * 配网成功后通过 NVS (非易失性存储) **自动保存**，后续开机自动回连。
+* **NTP 时间与天气同步**
+    * 连接 Wi-Fi 后自动同步网络时间 (NTP) 与本地气象 API。
+
+### 💻 UI 界面与交互
+
+#### 🏠 1. 主时钟页面
+* **顶部栏**：日期、星期、室外天气图标。
+* **中部核心**：大字实时时间、室内温度 (BMP280)、当地海拔。
+
+#### 📊 2. 模式选择页面 (主菜单)
+* 通过**短按**循环滚动，**长按**进入以下子页面：
+    * 🏷️ **实时时钟**：返回主页。
+    * ❤️ **血氧检测**：启动 MAX30102 采集血氧与心率。
+    * 🎮 **游戏中心**：进入游戏子菜单。
+    * ℹ️ **系统信息**：关于项目与作者信息。
+
+#### 🩺 3. 血氧检测页面
+* 实时绘制心率波形，静止放置手指后显示血氧饱和度与心率数值。
+
+#### 🎮 4. 游戏选择页面
+内置三款利用 MPU6050 重力感应或按键控制的小游戏：
+1.  **悬浮球**：利用 MPU6050 倾斜控制球体平衡。
+2.  **恐龙快跑**：经典跳跃和蹲下躲避障碍物。
+3.  **飞机大战**：体感/按键控制战机击杀敌机。
+
+#### ℹ️ 5. 系统信息页面
+* 展示固件版本、项目开源地址及作者信息。
