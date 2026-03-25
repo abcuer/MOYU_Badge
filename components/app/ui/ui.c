@@ -74,7 +74,7 @@ void draw_main_clock_ui(u8g2_t *u8g2)
     const char *days[] = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     // 把 sprintf 改为 snprintf 防溢出，保持安全习惯
-    snprintf(buf, sizeof(buf), "%04d~%02d~%02d %s %s", t.tm_year+1900, t.tm_mon+1, t.tm_mday, days[t.tm_wday], weather_data.weather);
+    snprintf(buf, sizeof(buf), "%04d-%02d-%02d %s %s", t.tm_year+1900, t.tm_mon+1, t.tm_mday, days[t.tm_wday], weather_data.weather);
     u8g2_DrawStr(u8g2, 1, 9, buf);
 
     u8g2_DrawHLine(u8g2, 0, 11, 128);
@@ -123,80 +123,89 @@ void draw_main_clock_ui(u8g2_t *u8g2)
 }
 
 // 建议把这个结构体定义拉到函数外面，防止每次调用函数都重新在栈上初始化
-typedef struct {
-    const char *name;
-    uint16_t icon_code; // 改用 U8G2 内置字库的 Unicode 编码
-} game_info_t;
 
+int menu_layer = 1; // 默认在1级菜单
 void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
 {
-    // 配置 App 信息（使用 u8g2_font_open_iconic_all_2x_t 图标库）
-    static const game_info_t games[] = {
-        [MODE_CLOCK] = {"Clock", 64 + 11}, // 钟表图标
-        [MODE_BALL]  = {"Ball",  64 + 4},  // 球体/圆环
-        [MODE_DINO]  = {"Dino",  64 + 23}, // 恐龙/小怪兽
-        [MODE_PLANE] = {"Plane", 64 + 16}, // 飞机/飞行物
-        [MODE_BLOOD]  = {"Spo2",  64 + 5},  // <--- 新增血氧，图标 64+5 是个漂亮的实心爱心❤️
-        [MODE_SETTING] = {"Setting",   64 + 3},
+    static const game_info_t info_db[] = {
+        [MODE_CLOCK]       = {"Clock",    64 + 11}, 
+        [MODE_BLOOD]       = {"SpO2",     64 + 5},  
+        [MODE_GAME_SELECT] = {"Game",     64 + 23}, 
+        [MODE_SETTING]     = {"Setting",  64 + 3},
+        [MODE_BALL]        = {"Ball",     64 + 4},  
+        [MODE_DINO]        = {"Dino",     64 + 19}, 
+        [MODE_PLANE]       = {"Plane",    64 + 16}, 
     };
 
-    static const ui_mode_e game_list[] = {
-        MODE_CLOCK, MODE_BALL, MODE_DINO, MODE_PLANE, MODE_BLOOD, MODE_SETTING // <--- 添加到轮播列表
-    };
-    
-    // 自动计算 App 数量，防止手动填错越界
-    const int game_count = sizeof(game_list) / sizeof(game_list[0]); 
+    const ui_mode_e *active_list;
+    int count = 0;
 
-    // 1. 寻找当前选中模式所在的索引 cur
-    int cur = 0;
-    for (int i = 0; i < game_count; i++) {
-        if (game_list[i] == selected) { 
-            cur = i; 
-            break; 
-        }
+    // 🎯 【核心修正 1】：放弃肉眼猜测，直接根据明确的层级变量决定列表！
+    if (menu_layer == 2) {
+        active_list = sub_game_list;
+        count = sizeof(sub_game_list) / sizeof(sub_game_list[0]);
+    } else {
+        active_list = main_app_list;
+        count = sizeof(main_app_list) / sizeof(main_app_list[0]);
     }
-    int left_i  = (cur - 1 + game_count) % game_count;
-    int right_i = (cur + 1) % game_count;
+    
+    int cur = 0;
+    for (int i = 0; i < count; i++) {
+        if (active_list[i] == selected) { cur = i; break; }
+    }
+    int left_i  = (cur - 1 + count) % count;
+    int right_i = (cur + 1) % count;
 
     u8g2_ClearBuffer(u8g2);
 
     // ── 顶部状态栏 ─────────────────────────────
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(u8g2, 34, 10, "Select App");
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tn);
+    if (menu_layer == 2) {
+        u8g2_DrawStr(u8g2, 31, 10, "Select Game");
+    } else {
+        u8g2_DrawStr(u8g2, 34, 10, "Select App");
+    }
     u8g2_DrawHLine(u8g2, 0, 12, 128);
 
-    // ── 左右切换箭头（做成实心三角形，更精致） ───
-    u8g2_DrawTriangle(u8g2, 4, 32, 8, 28, 8, 36);   // 左箭头 ◀
-    u8g2_DrawTriangle(u8g2, 123, 32, 119, 28, 119, 36); // 右箭头 ▶
+    u8g2_DrawTriangle(u8g2, 4, 32, 8, 28, 8, 36);   
+    u8g2_DrawTriangle(u8g2, 119, 28, 119, 36, 123, 32); 
 
-    // ── 左右侧文字（弱化显示） ───────────────────
-    u8g2_SetFont(u8g2, u8g2_font_4x6_tf); // 侧边用更窄的字体，防止重叠
-    
-    // 左边App名称 (居左)
-    u8g2_DrawStr(u8g2, 12, 35, games[game_list[left_i]].name);
-    
-    // 右边App名称 (向左靠齐，防止飞出屏幕)
-    int right_name_w = u8g2_GetStrWidth(u8g2, games[game_list[right_i]].name);
-    u8g2_DrawStr(u8g2, 116 - right_name_w, 35, games[game_list[right_i]].name);
+    const char *left_name  = info_db[active_list[left_i]].name;
+    const char *right_name = info_db[active_list[right_i]].name;
 
-    // ── 中间选中卡片（圆角矩形 + 居中） ─────────
+    // 🎯 明确处于二级菜单层，才改名
+    if (menu_layer == 2 && active_list[left_i] == MODE_GAME_SELECT)  left_name = "Back";
+    if (menu_layer == 2 && active_list[right_i] == MODE_GAME_SELECT) right_name = "Back";
+
+    u8g2_SetFont(u8g2, u8g2_font_5x7_tr); 
+    u8g2_DrawStr(u8g2, 12, 35, left_name);
+    int right_name_w = u8g2_GetStrWidth(u8g2, right_name);
+    u8g2_DrawStr(u8g2, 116 - right_name_w, 35, right_name);
+
     int center_x = 44, center_y = 15, w = 40, h = 34;
-    u8g2_DrawRFrame(u8g2, center_x, center_y, w, h, 4);     // 圆角卡片外框
+    u8g2_DrawRFrame(u8g2, center_x, center_y, w, h, 4);     
     
-    // 绘制 16x16 居中图标
     u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_2x_t); 
-    u8g2_DrawGlyph(u8g2, center_x + 12, center_y + 24, games[selected].icon_code);
 
-    // ── 选中文字：黑底白字（反色） ───────────────
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    int text_width = u8g2_GetStrWidth(u8g2, games[selected].name);
-    int text_x = center_x + (w - text_width) / 2; // 文字水平居中
+    const char *cur_name = info_db[selected].name;
+    uint16_t cur_icon    = info_db[selected].icon_code;
+
+    // 🎯 明确处于二级菜单层，才改名和图标
+    if (menu_layer == 2 && selected == MODE_GAME_SELECT) {
+        cur_name = "Back";
+        cur_icon = 64 + 3; // 返回箭头
+    }
+
+    u8g2_DrawGlyph(u8g2, center_x + 12, center_y + 24, cur_icon);
+
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tr);
+    int text_width = u8g2_GetStrWidth(u8g2, cur_name);
+    int text_x = center_x + (w - text_width) / 2; 
     
-    // Y轴微调：保证卡片底部和反相文字贴合漂亮
-    u8g2_DrawBox(u8g2, text_x - 2, center_y + h - 1, text_width + 4, 11); // 黑色背景条
-    u8g2_SetDrawColor(u8g2, 0); // 开启反色 (写白色)
-    u8g2_DrawStr(u8g2, text_x, center_y + h + 8, games[selected].name);
-    u8g2_SetDrawColor(u8g2, 1); // 恢复正常画笔色
+    u8g2_DrawBox(u8g2, text_x - 2, center_y + h + 3 , text_width + 4, 11); 
+    u8g2_SetDrawColor(u8g2, 0); 
+    u8g2_DrawStr(u8g2, text_x, center_y + h + 11, cur_name);
+    u8g2_SetDrawColor(u8g2, 1); 
 
     u8g2_SendBuffer(u8g2);
 }
@@ -205,8 +214,6 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
  * @brief 绘制悬浮球游戏界面
  * @param u8g2 屏幕句柄指针
  */
-
-
 // 辅助函数：判断点 (px, py) 是否在矩形障碍物内
 static bool is_point_in_box(float px, float py, Obstacle_t box, float margin) {
     return (px + margin > box.x && px - margin < box.x + box.w &&
@@ -334,23 +341,33 @@ void draw_dino_game(u8g2_t *u8g2)
 {
     if (in_select) return; // 如果处于菜单切换模式，直接跳过游戏绘制
 
-    // ==========================================
+// ==========================================
     // A. 游戏结束界面状态 (STATE_GAMEOVER)
     // ==========================================
     if (dino_game.state == STATE_GAMEOVER) {
         u8g2_ClearBuffer(u8g2);
-        
+        int w; // 用于动态存放字符串像素宽度
+
+        // 1. 绘制 "GAME OVER" (使用 6x12 字体)
         u8g2_SetFont(u8g2, u8g2_font_6x12_tr);
-        u8g2_DrawStr(u8g2, 35, 22, "GAME OVER");
+        w = u8g2_GetStrWidth(u8g2, "GAME OVER");
+        u8g2_DrawStr(u8g2, (128 - w) / 2, 22, "GAME OVER");
         
+        // 2. 绘制当前分数 (使用 6x10 字体，让它稍微显眼一点)
         char score_buf[20];
         snprintf(score_buf, sizeof(score_buf), "Score: %d", (int)dino_game.score);
-        u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-        u8g2_DrawStr(u8g2, 40, 36, score_buf);
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tr);
+        w = u8g2_GetStrWidth(u8g2, score_buf);
+        u8g2_DrawStr(u8g2, (128 - w) / 2, 36, score_buf);
 
-        u8g2_SetFont(u8g2, u8g2_font_4x6_tf);
-        u8g2_DrawStr(u8g2, 31, 50, "SHORT KEY: RETRY");
-        u8g2_DrawStr(u8g2, 33, 60, "LONG KEY : MENU");
+        // 3. 绘制按键提示 (使用 6x10 字体，保持工整度)
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tr);
+        
+        w = u8g2_GetStrWidth(u8g2, "SHORT KEY: RETRY");
+        u8g2_DrawStr(u8g2, (128 - w) / 2, 50, "SHORT KEY: RETRY");
+
+        w = u8g2_GetStrWidth(u8g2, "LONG KEY: MENU");
+        u8g2_DrawStr(u8g2, (128 - w) / 2, 62, "LONG KEY: MENU");
         
         u8g2_SendBuffer(u8g2);
         return;
@@ -510,17 +527,27 @@ void draw_plane_game(u8g2_t *u8g2)
     // ==========================================
     if (air_game.state == STATE_GAMEOVER) {
         u8g2_ClearBuffer(u8g2);
+        int w; // 用于临时存放字符串像素宽度
+
+        // 1. 绘制 "GAME OVER" (使用 6x12 字体)
         u8g2_SetFont(u8g2, u8g2_font_6x12_tr);
-        u8g2_DrawStr(u8g2, 40, 25, "GAME OVER");
+        w = u8g2_GetStrWidth(u8g2, "GAME OVER");
+        u8g2_DrawStr(u8g2, (128 - w) / 2, 22, "GAME OVER"); // Y 坐标稍微提一下
         
+        // 2. 绘制分数
         char buf[20];
         snprintf(buf, sizeof(buf), "SCORE: %d", air_game.score);
-        u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-        u8g2_DrawStr(u8g2, 41, 36, buf);
 
-        u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-        u8g2_DrawStr(u8g2, 22, 48, "SHORT KEY: RESTART");
-        u8g2_DrawStr(u8g2, 30, 58, "LONG KEY: MENU");
+        w = u8g2_GetStrWidth(u8g2, buf);
+        u8g2_DrawStr(u8g2, (128 - w) / 2, 36, buf);
+
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tr);
+        w = u8g2_GetStrWidth(u8g2, "SHORT KEY: RESTART");
+        u8g2_DrawStr(u8g2, (128 - w) / 2, 50, "SHORT KEY: RESTART");
+
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tr);
+        w = u8g2_GetStrWidth(u8g2, "LONG KEY: MENU");
+        u8g2_DrawStr(u8g2, (128 - w) / 2, 62, "LONG KEY: MENU");
         
         u8g2_SendBuffer(u8g2);
         return;

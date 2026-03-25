@@ -15,8 +15,10 @@ void app_main(void)
 
     // ── 第四步：启动传感器任务 ───────────────
     xTaskCreate(start_sensor_task, "sensor_task", 8192, NULL, 6, NULL);
-    xTaskCreate(onenet_upload_task, "upload_task", 8192, NULL, 4, NULL);
+    // xTaskCreate(start_key_task, "key_task", 4196, NULL, 5, NULL);
+    xTaskCreate(start_onenet_task, "upload_task", 8192, NULL, 3, NULL);
 
+    
     // while(1)
     // {
     //     bmp280_read_data(&bmp280);

@@ -3,24 +3,38 @@
 #include "u8g2.h"
 
 typedef enum {
-    MODE_CLOCK = 0,    // 主界面：时钟+传感器
-    MODE_SELECT,       // 模式选择页面（短按切换游戏）
-    MODE_BALL,         // 悬浮球
-    MODE_DINO,         // 恐龙快跑
-    MODE_PLANE,        // 飞机大战
-    MODE_BLOOD,        // 血氧检测
-    MODE_SETTING,
+    MODE_CLOCK = 0,    // 1级：时钟
+    MODE_BLOOD,        // 1级：血氧检测
+    MODE_GAME_SELECT,  // 1级：游戏二级菜单入口 (走马灯显示 "Game")
+    MODE_SETTING,      // 1级：关于/设置
+    
+    // 以下为 2 级：具体的子游戏
+    MODE_BALL,         
+    MODE_DINO,         
+    MODE_PLANE,        
 } ui_mode_e;
 
-// 选择列表，包含主时钟
-static const ui_mode_e game_list[] = {
-    MODE_CLOCK,   // 主时钟也在列表里
-    MODE_BALL,
-    MODE_DINO,
-    MODE_PLANE,
-    MODE_BLOOD,
-    MODE_SETTING,
+// 1 级主菜单 App 轮播列表
+static const ui_mode_e main_app_list[] = {
+    MODE_CLOCK, 
+    MODE_BLOOD, 
+    MODE_GAME_SELECT, 
+    MODE_SETTING
 };
+
+// 2 级子菜单 游戏轮播列表
+static const ui_mode_e sub_game_list[] = {
+    MODE_BALL, 
+    MODE_DINO, 
+    MODE_PLANE,
+    MODE_GAME_SELECT, 
+};
+
+typedef struct {
+    const char *name;
+    uint16_t icon_code; // 改用 U8G2 内置字库的 Unicode 编码
+} game_info_t;
+
 
 /*
     悬浮球
@@ -115,11 +129,14 @@ void draw_main_clock_ui(u8g2_t *u8g2);
 void draw_ball_game(u8g2_t *u8g2);
 void draw_dino_game(u8g2_t *u8g2);
 void dino_game_reset(DinoGame_t *game);
+
 void draw_plane_game(u8g2_t *u8g2);
 void air_game_reset(AirGame_t *game);
 
 void draw_blood_ui(u8g2_t *u8g2);
 void draw_setting_ui(u8g2_t *u8g2);
+
+extern int menu_layer; // 1代表一级菜单，2代表二级菜单
 
 // 声明全局游戏对象
 extern ui_mode_e mode;

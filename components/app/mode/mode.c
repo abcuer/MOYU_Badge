@@ -1,6 +1,5 @@
 #include "headfile.h"
 
-static const int game_count = 6;
 // 是否处于"选择模式"（覆盖在当前界面上）
 bool in_select = false;
 
@@ -8,30 +7,38 @@ void key_scan(void)
 {
     key_event_e event = key_get_event(KEY_USER);
 
+    const int main_app_count = sizeof(main_app_list) / sizeof(main_app_list[0]);
+    const int sub_game_count = sizeof(sub_game_list) / sizeof(sub_game_list[0]);
+
     if (event == KEY_EVENT_SHORT)
     {
         if (in_select)
         {
-            // 选择模式下短按 → 切换到下一个
-            selected_game++;
-            if (selected_game >= game_count)
-                selected_game = 0;
-            ESP_LOGI("KEY", "选中: %d", game_list[selected_game]);
+            // 🎯 【短按切页】：直接根据 menu_layer 锁定列表，绝不会跑偏！
+            if (menu_layer == 2) {
+                int idx = 0;
+                for(int i = 0; i < sub_game_count; i++) {
+                    if(sub_game_list[i] == selected_game) { idx = i; break; }
+                }
+                idx = (idx + 1) % sub_game_count;
+                selected_game = sub_game_list[idx];
+            } 
+            else {
+                int idx = 0;
+                for(int i = 0; i < main_app_count; i++) {
+                    if(main_app_list[i] == selected_game) { idx = i; break; }
+                }
+                idx = (idx + 1) % main_app_count;
+                selected_game = main_app_list[idx];
+            }
         }
         else
         {
-            if (mode == MODE_DINO) {
-                if (dino_game.state == STATE_GAMEOVER) {
-                    // 传入结构体地址进行重置
-                    dino_game_reset(&dino_game); 
-                }
+            if (mode == MODE_DINO && dino_game.state == STATE_GAMEOVER) {
+                dino_game_reset(&dino_game); 
             }
-            else if(mode == MODE_PLANE)
-            {
-                if (air_game.state == STATE_GAMEOVER) {
-                    // 传入结构体地址进行重置
-                    air_game_reset(&air_game);
-                }
+            else if (mode == MODE_PLANE && air_game.state == STATE_GAMEOVER) {
+                air_game_reset(&air_game);
             }
         }
     }
@@ -39,28 +46,49 @@ void key_scan(void)
     {
         if (!in_select)
         {
-            // 任意界面长按 → 进入选择模式
-            // 默认选中当前模式，方便用户知道自己在哪
-            for (int i = 0; i < game_count; i++) {
-                if (game_list[i] == mode) {
-                    selected_game = i;
-                    break;
+            selected_game = mode; 
+            in_select = true;
+            
+            // 🎯 重新进入选择列表时，判定它应该处于什么层级
+            if (mode == MODE_BALL || mode == MODE_DINO || mode == MODE_PLANE) {
+                menu_layer = 2; // 如果是从游戏退出来的，锁定在二级菜单层级
+            } else {
+                menu_layer = 1; // 如果是从普通App退出来的，锁定在一级菜单层级
+            }
+            return;
+        }
+
+        if (in_select)
+        {
+            // 🎯 【长按处理】：根据 menu_layer 严丝合缝进行深钻/跳出
+            if (menu_layer == 2) {
+                if (selected_game == MODE_GAME_SELECT) {
+                    // 长按 Back 键：降级为一级菜单，并指向 Game 大厅
+                    menu_layer = 1;
+                    selected_game = MODE_GAME_SELECT; 
+                    ESP_LOGI("KEY", "二级菜单长按返回，回到一级 App 菜单");
+                } else {
+                    // 开启具体物理游戏
+                    mode = selected_game;
+                    in_select = false;
+                }
+            } 
+            else { // menu_layer == 1
+                if (selected_game == MODE_GAME_SELECT) {
+                    // 长按 Game 键：升级为二级菜单，并指向 Ball
+                    menu_layer = 2;
+                    selected_game = MODE_BALL; 
+                    ESP_LOGI("KEY", "进入二级游戏选择菜单");
+                } else {
+                    // 开启普通 App (Clock, Setting, Blood)
+                    mode = selected_game;
+                    in_select = false;
                 }
             }
-            in_select = true;
-            ESP_LOGI("KEY", "进入选择模式，当前: %d", mode);
-        }
-        else
-        {
-            // 选择模式下长按 → 确认进入选中的模式
-            mode = game_list[selected_game];
-            in_select = false;
-            ESP_LOGI("KEY", "进入模式: %d", mode);
+            return;
         }
     }
 }
-
-
 
 // 滑动平均滤波（平滑SVM，减少毛刺）
 #define SVM_BUF_SIZE 5

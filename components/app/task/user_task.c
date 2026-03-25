@@ -41,31 +41,24 @@ void start_sensor_task(void *pvParameters)
     bmp280_init();
     max30102_init();
 
-    static int slow_counter = 0;
     while(1)
     {
         key_scan();
-
-        if(mode != MODE_BLOOD)
-            imu_get_angle(&acc, &gyro, &euler_angle, SENSOR_PERIOD/1000.0f);
         
-        if(mode == MODE_BLOOD) 
-            blood_detect();
-
-        if(mode == MODE_CLOCK)
-        {
-            slow_counter++;
-            if (slow_counter >= 10)  // 每100ms执行一次
-            {
-                slow_counter = 0;
-                bmp280_read_data(&bmp280);  
-            }
+        if(mode == MODE_GAME_SELECT || mode == MODE_BALL || mode == MODE_DINO || mode == MODE_PLANE) {
+            imu_get_angle(&acc, &gyro, &euler_angle, SENSOR_PERIOD/1000.0f);
         }
-        vTaskDelay(pdMS_TO_TICKS(SENSOR_PERIOD));
+        else if(mode == MODE_BLOOD) {
+            blood_detect();
+        }
+        else if(mode == MODE_CLOCK) {
+            bmp280_read_data(&bmp280);  
+        }
+            vTaskDelay(pdMS_TO_TICKS(SENSOR_PERIOD)); 
     }
 }
 
-void onenet_upload_task(void *pvParameters) 
+void start_onenet_task(void *pvParameters) 
 {
     xEventGroupWaitBits(wifi_ev, WIFI_CONNECT_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
     // 启动 OneNET MQTT 连接
@@ -92,34 +85,55 @@ void onenet_upload_task(void *pvParameters)
     }
 }
 
+void start_key_task(void *pvParameters) 
+{
+    key_device_init(); // 初始化 GPIO 
+    
+    while(1) 
+    {
+        key_event_e event = key_get_event(KEY_USER); 
+
+        if (event != KEY_EVENT_NONE) {
+            key_scan(); // 处理切页
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20)); 
+    }
+}
+
 void start_oled_task(void *pvParameters)
 {
     u8g2_init();
+
+    // ── 1. 等待 WiFi 和 时间对时 ──────────────────
     while (!(xEventGroupGetBits(wifi_ev) & TIME_SYNC_BIT)) {
         draw_syncing_ui(&u8g2);
         vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD));
     }
 
+    // ── 2. 主页面与菜单状态机 ──────────────────────
     while (1)
     {
-        if (in_select)
+        if(in_select)
         {
-            // 选择模式：显示选择UI（覆盖当前界面）
-            draw_select_ui(&u8g2, game_list[selected_game]);
+            // 处于选择模式：直接渲染当前正在悬浮选中的页面（1级或2级）
+            draw_select_ui(&u8g2, selected_game);
         }
         else
         {
+            // 处于正常运行模式：根据全局模式 mode 渲染不同页面
             switch (mode)
             {
-                case MODE_CLOCK: draw_main_clock_ui(&u8g2); break;
-                case MODE_BALL:  draw_ball_game(&u8g2);     break;
-                case MODE_DINO:  draw_dino_game(&u8g2);     break;
-                case MODE_PLANE: draw_plane_game(&u8g2);    break;
-                case MODE_BLOOD: draw_blood_ui(&u8g2);      break;
-                case MODE_SETTING: draw_setting_ui(&u8g2);  break;
+                case MODE_CLOCK:   draw_main_clock_ui(&u8g2); break;
+                case MODE_BALL:    draw_ball_game(&u8g2);     break;
+                case MODE_DINO:    draw_dino_game(&u8g2);     break;
+                case MODE_PLANE:   draw_plane_game(&u8g2);    break;
+                case MODE_BLOOD:   draw_blood_ui(&u8g2);      break;
+                case MODE_SETTING: draw_setting_ui(&u8g2);    break;
                 default: break;
             }
         }
+
         vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD));
     }
 }
