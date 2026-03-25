@@ -2,10 +2,20 @@
 
 // 是否处于"选择模式"（覆盖在当前界面上）
 bool in_select = false;
+// 记录最后操作时间（毫秒）
+uint32_t last_action_time = 0; 
+
+extern TaskHandle_t sensor_task_handle;
+extern TaskHandle_t sync_task_handle;
 
 void key_scan(void)
 {
     key_event_e event = key_get_event(KEY_USER);
+
+    if (event != KEY_EVENT_NONE) {
+        // 🚀 只要触发了短按或者长按，重置倒计时
+        last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+    }
 
     const int main_app_count = sizeof(main_app_list) / sizeof(main_app_list[0]);
     const int sub_game_count = sizeof(sub_game_list) / sizeof(sub_game_list[0]);
@@ -66,7 +76,6 @@ void key_scan(void)
                     // 长按 Back 键：降级为一级菜单，并指向 Game 大厅
                     menu_layer = 1;
                     selected_game = MODE_GAME_SELECT; 
-                    ESP_LOGI("KEY", "二级菜单长按返回，回到一级 App 菜单");
                 } else {
                     // 开启具体物理游戏
                     mode = selected_game;
@@ -78,7 +87,6 @@ void key_scan(void)
                     // 长按 Game 键：升级为二级菜单，并指向 Ball
                     menu_layer = 2;
                     selected_game = MODE_BALL; 
-                    ESP_LOGI("KEY", "进入二级游戏选择菜单");
                 } else {
                     // 开启普通 App (Clock, Setting, Blood)
                     mode = selected_game;
@@ -88,6 +96,55 @@ void key_scan(void)
             return;
         }
     }
+}
+
+// mode.c
+void enter_light_sleep(void)
+{
+    u8g2_SetPowerSave(&u8g2, 1); // 息屏
+    mpu6050_sleep(1);
+    bmp280_sleep(1);
+    max30102_sleep(1);
+    if (sensor_task_handle != NULL) {
+        vTaskSuspend(sensor_task_handle); // 暂停传感器 I2C 轮询
+    }
+
+    if (sync_task_handle != NULL) {
+        vTaskSuspend(sync_task_handle); 
+    }
+
+    // 🎯 【修正 1】：放弃 ext0，改用 ESP32-S3 官方最推荐的 Light-sleep GPIO 唤醒方式
+    gpio_wakeup_enable(USER_KEY_PIN, GPIO_INTR_LOW_LEVEL); // 低电平唤醒
+    esp_sleep_enable_gpio_wakeup(); 
+
+    // 🎯 【修正 2】：睡眠前，强行将按键状态机复位挂起，防止带着“按下”的脏数据去睡觉导致秒醒
+    key_reset_fsm(KEY_USER);
+
+    esp_light_sleep_start(); // 💤 真正的睡觉阻塞点 💤
+
+    // 🚀🚀 按下按键瞬间，从这里苏醒 🚀🚀
+
+    u8g2_SetPowerSave(&u8g2, 0); // 亮屏
+    mpu6050_sleep(0);
+    bmp280_sleep(0);
+    max30102_sleep(0);
+
+    if (sensor_task_handle != NULL) {
+        vTaskResume(sensor_task_handle); // 恢复传感器
+    }
+    if (sync_task_handle != NULL) {
+        vTaskResume(sync_task_handle); 
+    }
+
+    // 🎯 【修正 3】：苏醒后单方面宣布退出选择页面，重置按键状态机
+    in_select = false; 
+    key_reset_fsm(KEY_USER);
+
+    // 🎯 【修正 4】：苏醒瞬间刷新时间戳！
+    last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+
+    // 唤醒后，关闭该引脚的唤醒功能，防止平时运行时干扰正常中断
+    gpio_wakeup_disable(USER_KEY_PIN); 
 }
 
 // 滑动平均滤波（平滑SVM，减少毛刺）
@@ -163,8 +220,4 @@ void step_detect(void)
         step_data.is_walking = false;
         step_data.cadence    = 0;
     }
-}
-void step_reset_today(void)
-{
-    step_data.today_steps = 0;
 }

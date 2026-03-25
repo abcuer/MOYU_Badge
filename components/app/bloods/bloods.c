@@ -33,6 +33,9 @@ void blood_reset(void)
     memset(ir_buf,  0, sizeof(ir_buf));
     memset(red_buf, 0, sizeof(red_buf));
     memset(hr_history, 0, sizeof(hr_history));
+
+    reset_blood_ui_timer();
+
     buf_idx = 0; buf_full = false;
     ir_smooth_prev = ir_smooth_prev2 = 0;
     peak_val = valley_val = peak_tick = 0;

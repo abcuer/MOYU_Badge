@@ -135,3 +135,12 @@ void mpu_get_data(Acc_Struct *acc, Gyro_Struct *gyro)
     gyro->y -= gyro_offsets.y;
     gyro->z -= gyro_offsets.z;
 }
+
+void mpu6050_sleep(bool enable)
+{
+    if (enable) {
+        MPU6050_Write_Reg(0x6B, 0x40); // 写入 0x40 (Sleep = 1, 其他为0)
+    } else {
+        MPU6050_Write_Reg(0x6B, 0x01); // 写入 0x01 恢复唤醒并使用 PLL 时钟
+    }
+}

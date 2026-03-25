@@ -12,6 +12,7 @@
 #include "esp_random.h"
 #include "esp_netif_sntp.h"
 #include "esp_http_client.h"
+#include "esp_sleep.h"
 
 #include "ws2812.h"
 #include "led.h"
@@ -27,6 +28,7 @@
 #include "onenet_mqtt.h"
 #include "onenet_dm.h"
 
+#include "ap_wifi.h"
 #include "mode.h"
 #include "bloods.h"
 #include "status.h"

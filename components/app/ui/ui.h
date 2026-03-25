@@ -134,6 +134,8 @@ void draw_plane_game(u8g2_t *u8g2);
 void air_game_reset(AirGame_t *game);
 
 void draw_blood_ui(u8g2_t *u8g2);
+void reset_blood_ui_timer(void);
+
 void draw_setting_ui(u8g2_t *u8g2);
 
 extern int menu_layer; // 1代表一级菜单，2代表二级菜单

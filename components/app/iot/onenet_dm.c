@@ -74,16 +74,5 @@ cJSON* onenet_property_upload_dm(void)
     double final_spo2 = (int)(b_data.SpO2 * 10) / 10.0; 
     cJSON_AddNumberToObject(spo2_js, "value", final_spo2);
 
-    // ── 🧭 4. 欧拉角 (来自 mpu6050 运动解算的 euler_angle) ───
-    cJSON* pitch_js = cJSON_AddObjectToObject(params_js, "pitch");
-    cJSON_AddNumberToObject(pitch_js, "value", (int)(euler_angle.pitch * 10) / 10.0);
-
-    cJSON* roll_js = cJSON_AddObjectToObject(params_js, "roll");
-    cJSON_AddNumberToObject(roll_js, "value", (int)(euler_angle.roll * 10) / 10.0);
-
-    cJSON* yaw_js = cJSON_AddObjectToObject(params_js, "yaw");
-    cJSON_AddNumberToObject(yaw_js, "value", (int)(euler_angle.yaw * 10) / 10.0);
-
-
     return root;
 }

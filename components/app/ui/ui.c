@@ -4,6 +4,7 @@
 ui_mode_e mode = MODE_CLOCK;
 ui_mode_e selected_game = MODE_BALL;
 
+// ui.c
 void draw_syncing_ui(u8g2_t *u8g2)
 {
     static const char *tips[] = {
@@ -13,26 +14,25 @@ void draw_syncing_ui(u8g2_t *u8g2)
         "Keep On Loving"
     };
 
-    uint32_t ms_now = esp_timer_get_time() / 1000; 
+    // 🎯 修复 1：改用 FreeRTOS 相对滴答时间。睡觉时它会暂停，醒来才继续数！
+    uint32_t ms_now = xTaskGetTickCount() * portTICK_PERIOD_MS; 
 
     u8g2_ClearBuffer(u8g2);
 
     // ── 顶部状态栏 ───────────────────────────────────────────
     u8g2_SetFont(u8g2, u8g2_font_6x12_tf); 
-    u8g2_DrawStr(u8g2, 12, 12, "Syncing Time"); // 稍微左移，腾出右侧空间
+    u8g2_DrawStr(u8g2, 12, 12, "Syncing Time"); 
 
-    // 1. 动态省略号
     int dot_idx = (ms_now / 500) % 4; 
     for(int i = 0; i < dot_idx; i++) {
-        u8g2_DrawStr(u8g2, 87 + (i * 4), 12, ".");
+        u8g2_DrawStr(u8g2, 86 + (i * 4), 12, ".");
     }
 
-    // 2. 新增：连接用时显示（靠右对齐）
     char time_buf[16];
-    int seconds = ms_now / 1000;
+    int seconds = ms_now / 1000; // 🎯 此时显示的单次配网时间就不会跳跃到几百秒了！
     snprintf(time_buf, sizeof(time_buf), "%ds", seconds);
     int time_w = u8g2_GetStrWidth(u8g2, time_buf);
-    u8g2_DrawStr(u8g2, 126 - time_w, 12, time_buf); // 距离右边缘保留 2 像素
+    u8g2_DrawStr(u8g2, 126 - time_w, 12, time_buf); 
 
     u8g2_DrawHLine(u8g2, 0, 16, 128); 
 
@@ -44,7 +44,7 @@ void draw_syncing_ui(u8g2_t *u8g2)
 
     u8g2_DrawHLine(u8g2, 0, 48, 128); 
 
-    // ── 底部：小球动画 (保持原样) ───────────────────────────
+    // ── 底部：小球动画 ───────────────────────────
     int track_y = 58;
     int track_x_start = 14, track_x_end = 114;
     int track_len = track_x_end - track_x_start;
@@ -128,19 +128,19 @@ int menu_layer = 1; // 默认在1级菜单
 void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
 {
     static const game_info_t info_db[] = {
-        [MODE_CLOCK]       = {"Clock",    64 + 11}, 
-        [MODE_BLOOD]       = {"SpO2",     64 + 5},  
-        [MODE_GAME_SELECT] = {"Game",     64 + 23}, 
-        [MODE_SETTING]     = {"Setting",  64 + 3},
-        [MODE_BALL]        = {"Ball",     64 + 4},  
-        [MODE_DINO]        = {"Dino",     64 + 19}, 
-        [MODE_PLANE]       = {"Plane",    64 + 16}, 
+        [MODE_CLOCK]       = {"Clock",    123}, 
+        [MODE_BLOOD]       = {"SpO2",     238},  
+        [MODE_GAME_SELECT] = {"Game",     207}, 
+        [MODE_SETTING]     = {"System",   129},
+        [MODE_BALL]        = {"Ball",     175},  
+        [MODE_DINO]        = {"Dino",     259}, 
+        [MODE_PLANE]       = {"Plane",    165}, 
     };
 
     const ui_mode_e *active_list;
     int count = 0;
 
-    // 🎯 【核心修正 1】：放弃肉眼猜测，直接根据明确的层级变量决定列表！
+    // 🎯 放弃肉眼猜测，直接根据明确的层级变量决定列表！
     if (menu_layer == 2) {
         active_list = sub_game_list;
         count = sizeof(sub_game_list) / sizeof(sub_game_list[0]);
@@ -159,7 +159,7 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
     u8g2_ClearBuffer(u8g2);
 
     // ── 顶部状态栏 ─────────────────────────────
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tn);
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     if (menu_layer == 2) {
         u8g2_DrawStr(u8g2, 31, 10, "Select Game");
     } else {
@@ -193,7 +193,7 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
     // 🎯 明确处于二级菜单层，才改名和图标
     if (menu_layer == 2 && selected == MODE_GAME_SELECT) {
         cur_name = "Back";
-        cur_icon = 64 + 3; // 返回箭头
+        cur_icon = 66; // 返回箭头
     }
 
     u8g2_DrawGlyph(u8g2, center_x + 12, center_y + 24, cur_icon);
@@ -685,93 +685,92 @@ void draw_plane_game(u8g2_t *u8g2)
     u8g2_SendBuffer(u8g2);
 }
 
+static uint32_t sample_start = 0; 
+
+void reset_blood_ui_timer(void) {
+    sample_start = 0; 
+}
+
 void draw_blood_ui(u8g2_t *u8g2)
 {
-    char buf[32];
-    u8g2_ClearBuffer(u8g2);
+    char buf[32]; //
+    u8g2_ClearBuffer(u8g2); //
 
     // ── 顶部标题 ─────────────────────────────
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(u8g2, 30, 9, "Health Monitor");
-    u8g2_DrawHLine(u8g2, 0, 11, 128);
-    u8g2_DrawHLine(u8g2, 0, 13, 128);
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf); //
+    u8g2_DrawStr(u8g2, 25, 9, "Health Monitor"); //
+    u8g2_DrawHLine(u8g2, 0, 11, 128); //
+    u8g2_DrawHLine(u8g2, 0, 13, 128); //
 
-    switch (b_state)
+    switch (b_state) //
     {
-        case BLOOD_IDLE:
+        case BLOOD_IDLE: //
             // 提示放手指
-            u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-            u8g2_DrawStr(u8g2, 10, 35, "Place finger on");
-            u8g2_DrawStr(u8g2, 20, 47, "the sensor...");
+            u8g2_SetFont(u8g2, u8g2_font_6x10_tf); //
+            u8g2_DrawStr(u8g2, 10, 35, "Place finger on"); //
+            u8g2_DrawStr(u8g2, 20, 47, "the sensor..."); //
 
-            // 动态闪烁的心形（用方块模拟）
-            if ((xTaskGetTickCount() / 500) % 2 == 0) {
-                u8g2_DrawBox(u8g2, 58, 53, 6, 6);
-                u8g2_DrawBox(u8g2, 64, 53, 6, 6);
-                u8g2_DrawBox(u8g2, 55, 56, 18, 4);
-                u8g2_DrawBox(u8g2, 58, 60, 12, 3);
-                u8g2_DrawBox(u8g2, 61, 63, 6, 2);
+            if ((xTaskGetTickCount() / 500) % 2 == 0) { //
+                u8g2_DrawBox(u8g2, 58, 53, 6, 6); //
+                u8g2_DrawBox(u8g2, 64, 53, 6, 6); //
+                u8g2_DrawBox(u8g2, 55, 56, 18, 4); //
+                u8g2_DrawBox(u8g2, 58, 60, 12, 3); //
+                u8g2_DrawBox(u8g2, 61, 63, 6, 2); //
             }
-            break;
+            break; //
 
-        case BLOOD_SAMPLING:
+        case BLOOD_SAMPLING: //
         {
-            // 显示采集进度
-            u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-            u8g2_DrawStr(u8g2, 22, 30, "Measuring...");
+            u8g2_SetFont(u8g2, u8g2_font_6x10_tf); //
+            u8g2_DrawStr(u8g2, 22, 30, "Measuring..."); //
 
-            // 进度条动画（根据时间流动）
-            static uint32_t sample_start = 0;
-            if (sample_start == 0) sample_start = xTaskGetTickCount();
-            uint32_t elapsed = xTaskGetTickCount() - sample_start;
-            int bar = (int)(elapsed / 51);  // 5120ms总时长，128px宽
-            if (bar > 128) bar = 128;
+            if (sample_start == 0) sample_start = xTaskGetTickCount(); //
+            
+            uint32_t elapsed = xTaskGetTickCount() - sample_start; //
+            int bar = (elapsed / 51); //
+            if (bar > 128) bar = 128; //
 
-            u8g2_DrawFrame(u8g2, 0, 38, 128, 8);   // 进度条外框
-            u8g2_DrawBox(u8g2, 0, 38, bar, 8);      // 进度填充
+            u8g2_DrawFrame(u8g2, 0, 38, 128, 8); //
+            u8g2_DrawBox(u8g2, 0, 38, bar, 8); //
 
-            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-            u8g2_DrawStr(u8g2, 2, 56, "Keep still...");
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf); //
+            u8g2_DrawStr(u8g2, 2, 56, "Keep still..."); //
 
-            // 采集完重置起始时间
-            if (b_state != BLOOD_SAMPLING) sample_start = 0;
-            break;
+            break; //
         }
 
-        case BLOOD_DONE:
+        case BLOOD_DONE: //
             // 显示心率
-            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-            u8g2_DrawStr(u8g2, 2, 26, "Heart Rate");
-            u8g2_SetFont(u8g2, u8g2_font_logisoso16_tn);
-            snprintf(buf, sizeof(buf), "%3d", b_data.heart);
-            u8g2_DrawStr(u8g2, 2, 44, buf);
-            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-            u8g2_DrawStr(u8g2, 52, 44, "bpm");
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf); //
+            u8g2_DrawStr(u8g2, 2, 26, "Heart Rate"); //
+            u8g2_SetFont(u8g2, u8g2_font_logisoso16_tn); //
+            snprintf(buf, sizeof(buf), "%3d", b_data.heart); //
+            u8g2_DrawStr(u8g2, 2, 44, buf); //
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf); //
+            u8g2_DrawStr(u8g2, 52, 44, "bpm"); //
 
-            // 分割线
-            u8g2_DrawVLine(u8g2, 76, 15, 40);
+            u8g2_DrawVLine(u8g2, 76, 15, 40); //
 
             // 显示血氧
-            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-            u8g2_DrawStr(u8g2, 80, 26, "SpO2");
-            u8g2_SetFont(u8g2, u8g2_font_logisoso16_tn);
-            snprintf(buf, sizeof(buf), "%3d", (int)b_data.SpO2);
-            u8g2_DrawStr(u8g2, 80, 44, buf);
-            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-            u8g2_DrawStr(u8g2, 112, 44, "%");
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf); //
+            u8g2_DrawStr(u8g2, 80, 26, "SpO2"); //
+            u8g2_SetFont(u8g2, u8g2_font_logisoso16_tn); //
+            snprintf(buf, sizeof(buf), "%3d", (int)b_data.SpO2); //
+            u8g2_DrawStr(u8g2, 80, 44, buf); //
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf); //
+            u8g2_DrawStr(u8g2, 112, 44, "%"); //
 
-            // 底部健康评估
-            u8g2_DrawHLine(u8g2, 0, 48, 128);
-            u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-            if (b_data.SpO2 >= 85 && b_data.heart >= 60 && b_data.heart <= 110) {
-                u8g2_DrawStr(u8g2, 20, 58, "Status: Normal");
-            } else {
-                u8g2_DrawStr(u8g2, 14, 58, "Status: Abnormal!");
+            u8g2_DrawHLine(u8g2, 0, 48, 128); //
+            u8g2_SetFont(u8g2, u8g2_font_5x7_tf); //
+            if (b_data.SpO2 >= 85 && b_data.heart >= 60 && b_data.heart <= 110) { //
+                u8g2_DrawStr(u8g2, 20, 58, "Status: Normal"); //
+            } else { //
+                u8g2_DrawStr(u8g2, 14, 58, "Status: Abnormal!"); //
             }
-            break;
+            break; //
     }
 
-    u8g2_SendBuffer(u8g2);
+    u8g2_SendBuffer(u8g2); 
 }
 
 void draw_setting_ui(u8g2_t *u8g2)

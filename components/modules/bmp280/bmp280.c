@@ -69,6 +69,24 @@ static float bmp280_compensate_P(int32_t adc_P)
 }
 
 /**
+ * @brief 设置 BMP280 的电源模式
+ * @param enable true 为进入 Sleep 休眠, false 为恢复 Normal 测量
+ */
+void bmp280_sleep(bool enable)
+{
+    uint8_t config_data[2];
+    config_data[0] = BMP280_REG_CTRL; //
+
+    if (enable) {
+        config_data[1] = 0x24; // 最低两位为 00 (Sleep Mode)，保持温度气压过采样配置
+    } else {
+        config_data[1] = 0x27; // 最低两位为 11 (Normal Mode)
+    }
+
+    i2c_master_transmit(dev_handle, config_data, sizeof(config_data), -1); //
+}
+
+/**
  * @brief 初始化 I2C 总线和设备
  */
 void bmp280_init(void) 

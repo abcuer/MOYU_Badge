@@ -30,4 +30,5 @@ void blood_sample_once(void);      // 采一个点并实时处理
 void blood_reset(void);            // 重置状态
 void blood_detect(void);
 
+
 #endif

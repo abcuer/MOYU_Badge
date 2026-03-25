@@ -1,26 +1,75 @@
 #include "key.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
 static key_instance_s keys[KEY_NUM];
+
+// 🆕 1. 定义按键信号量
+SemaphoreHandle_t key_sem = NULL;
+
+
+/**
+ * @brief 强制复位指定按键的状态机参数
+ * @param type 按键索引
+ */
+void key_reset_fsm(key_type_t type)
+{
+    if (type >= KEY_NUM) return; // 越界安全检查
+
+    key_instance_s *ins = &keys[type]; //
+
+    // 🎯 强制拉回 IDLE 空闲状态
+    ins->running_param.state = KEY_IDLE; 
+    ins->running_param.long_triggered = false;
+    ins->running_param.last_tick = 0; 
+}
+
 
 static uint8_t get_key_level(key_type_t type) {
     return gpio_get_level(keys[type].static_param.gpio_pin);
 }
 
+// 🆕 2. 中断服务函数 (ISR)，运行在 RAM 中
+static void IRAM_ATTR gpio_isr_handler(void* arg) {
+    if (key_sem != NULL) {
+        // 解锁阻塞的按键任务
+        BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+        xSemaphoreGiveFromISR(key_sem, &xHigherPriorityTaskWoken);
+        if (xHigherPriorityTaskWoken) {
+            portYIELD_FROM_ISR(); // 强制上下文切换，让按键任务立刻执行
+        }
+    }
+}
+
+/**
+ * @brief 判断按键状态机是否回归空闲
+ */
+bool key_is_idle(key_type_t type) 
+{
+    if (type >= KEY_NUM) return true;
+    return (keys[type].running_param.state == KEY_IDLE);
+}
+
 void key_device_init(void) {
+    // 🆕 创建二值信号量
+    key_sem = xSemaphoreCreateBinary();
+
     keys[KEY_USER].static_param.gpio_pin = USER_KEY_PIN;
-    keys[KEY_USER].static_param.press_level = 0; // 假设0为按下
+    keys[KEY_USER].static_param.press_level = 0; 
     keys[KEY_USER].running_param.state = KEY_IDLE;
     keys[KEY_USER].running_param.long_triggered = false;
 
+    // 🆕 配置 GPIO 为任何电平跳变触发中断 (按下和释放都捕捉)
     gpio_config_t io_conf = {
-        .intr_type = GPIO_INTR_DISABLE,
+        .intr_type = GPIO_INTR_ANYEDGE, // 开启双边沿中断
         .mode = GPIO_MODE_INPUT,
         .pin_bit_mask = (1ULL << USER_KEY_PIN),
-        .pull_up_en = 1, // 默认上拉
+        .pull_up_en = 1, 
     };
     gpio_config(&io_conf);
+
+    // 🆕 注册全局 GPIO ISR 服务
+    gpio_install_isr_service(0);
+    // 🆕 绑定中断回调函数
+    gpio_isr_handler_add(USER_KEY_PIN, gpio_isr_handler, (void*) USER_KEY_PIN);
 }
 
 /**

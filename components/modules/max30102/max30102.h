@@ -41,5 +41,6 @@ extern iic_bus_t max30102_bus;
 /* 函数原型声明 */
 void max30102_init(void);
 void max30102_read_fifo(void); // 内部封装 IIC 读取 6 字节逻辑
+void max30102_sleep(bool enable);
 
 #endif

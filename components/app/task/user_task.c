@@ -1,66 +1,59 @@
 #include "headfile.h"
 
-EventGroupHandle_t wifi_ev = NULL; // 定义全局变量
-
-static void wifi_state_callback(WIFI_STATE state)
-{
-    if(state == WIFI_STATE_CONNECTED)
-    {
-        xEventGroupSetBits(wifi_ev, WIFI_CONNECT_BIT);
-    }
-}
+volatile bool is_first_sync_done = false;
 
 /**
  * @brief 同步任务：等待 WiFi 连接 -> 初始化 SNTP -> 等待对时成功
  */
 void start_sync_task(void *pvParameters)
 {
-    wifi_manager_init(wifi_state_callback);
-    wifi_manager_connect("MIKASAYA", "13531257359");
-
+    // 🎯 1. 【开机第一次】：死等网络连接成功
     xEventGroupWaitBits(wifi_ev, WIFI_CONNECT_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    // 获取时间和天气信息
-    fetch_time();
-    fetch_weather();
-    // ← 无论成功失败，都放行其他任务（失败也总比卡死好）
-    xEventGroupSetBits(wifi_ev, TIME_SYNC_BIT);
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    
+    fetch_time();     // 开机抓时间
+    fetch_weather();  // 开机抓天气
 
-    // 不销毁任务，每30分钟刷新一次天气
+    xEventGroupSetBits(wifi_ev, TIME_SYNC_BIT); // 释放时间同步标志
+    is_first_sync_done = true; // 宣布开机大功告成！
+
     while (1) 
     {
-        vTaskDelay(pdMS_TO_TICKS(30 * 60 * 1000));
-        fetch_weather();
+        vTaskDelay(pdMS_TO_TICKS(30 * 60 * 1000)); // 挂起 30 分钟
+        fetch_weather(); // 30 分钟后更新一次天气
     }
 }
 
 void start_sensor_task(void *pvParameters)
 {
-    key_device_init();
     mpu6050_init();
     bmp280_init();
     max30102_init();
+    xEventGroupWaitBits(wifi_ev, TIME_SYNC_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
 
     while(1)
-    {
-        key_scan();
-        
-        if(mode == MODE_GAME_SELECT || mode == MODE_BALL || mode == MODE_DINO || mode == MODE_PLANE) {
-            imu_get_angle(&acc, &gyro, &euler_angle, SENSOR_PERIOD/1000.0f);
-        }
-        else if(mode == MODE_BLOOD) {
-            blood_detect();
+    {   
+        if(mode == MODE_BALL || mode == MODE_DINO || mode == MODE_PLANE) {
+            imu_get_angle(&acc, &gyro, &euler_angle, 20.0f/1000.0f);
+            vTaskDelay(pdMS_TO_TICKS(20));
         }
         else if(mode == MODE_CLOCK) {
             bmp280_read_data(&bmp280);  
+            vTaskDelay(pdMS_TO_TICKS(500));
         }
-            vTaskDelay(pdMS_TO_TICKS(SENSOR_PERIOD)); 
+        else if(mode == MODE_BLOOD) {
+            blood_detect();
+            vTaskDelay(pdMS_TO_TICKS(20));
+        }
+        else{
+            vTaskDelay(pdMS_TO_TICKS(200));
+        }
     }
 }
 
 void start_onenet_task(void *pvParameters) 
 {
-    xEventGroupWaitBits(wifi_ev, WIFI_CONNECT_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
+    xEventGroupWaitBits(wifi_ev, TIME_SYNC_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
     // 启动 OneNET MQTT 连接
     onenet_start();
 
@@ -87,53 +80,76 @@ void start_onenet_task(void *pvParameters)
 
 void start_key_task(void *pvParameters) 
 {
-    key_device_init(); // 初始化 GPIO 
+    key_device_init(); // 初始化中断和 GPIO
     
     while(1) 
     {
-        key_event_e event = key_get_event(KEY_USER); 
+        // 🛑 阻塞在这里，不耗 CPU。直到中断按下 Give 了信号，它才瞬间醒来！
+        if (xSemaphoreTake(key_sem, portMAX_DELAY) == pdTRUE) 
+        {
+            // 💡 醒来后，开始跑状态机轮询，直到按键释放回到 IDLE 状态
+            while (1) 
+            {
+                key_scan(); 
+        
+                if (key_is_idle(KEY_USER)) {
+                    break; 
+                }
 
-        if (event != KEY_EVENT_NONE) {
-            key_scan(); // 处理切页
+                vTaskDelay(pdMS_TO_TICKS(10)); 
+            }
         }
-
-        vTaskDelay(pdMS_TO_TICKS(20)); 
     }
 }
 
 void start_oled_task(void *pvParameters)
 {
-    u8g2_init();
+    u8g2_init(); //
 
-    // ── 1. 等待 WiFi 和 时间对时 ──────────────────
-    while (!(xEventGroupGetBits(wifi_ev) & TIME_SYNC_BIT)) {
-        draw_syncing_ui(&u8g2);
-        vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD));
+    // 🎯 1. 只有开机第一次没同步完，才进这里
+    while (!is_first_sync_done) { 
+        draw_syncing_ui(&u8g2); //
+        vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD)); //
     }
 
-    // ── 2. 主页面与菜单状态机 ──────────────────────
-    while (1)
+    // 🎯 2. 用一个绝对无法跳出的外层 while(1) 锁死任务，绝不允许代码坠落到上面去！
+    while (1) 
     {
-        if(in_select)
-        {
-            // 处于选择模式：直接渲染当前正在悬浮选中的页面（1级或2级）
-            draw_select_ui(&u8g2, selected_game);
-        }
-        else
-        {
-            // 处于正常运行模式：根据全局模式 mode 渲染不同页面
-            switch (mode)
-            {
-                case MODE_CLOCK:   draw_main_clock_ui(&u8g2); break;
-                case MODE_BALL:    draw_ball_game(&u8g2);     break;
-                case MODE_DINO:    draw_dino_game(&u8g2);     break;
-                case MODE_PLANE:   draw_plane_game(&u8g2);    break;
-                case MODE_BLOOD:   draw_blood_ui(&u8g2);      break;
-                case MODE_SETTING: draw_setting_ui(&u8g2);    break;
-                default: break;
-            }
-        }
+        last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS; // 进场先刷一次时间戳
 
-        vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD));
+        while (1) // 内部 UI 刷新小循环
+        {
+            uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS; 
+
+            // 🎯 低功耗守卫 (35秒无操作)
+            if ((mode == MODE_CLOCK || mode == MODE_GAME_SELECT || mode == MODE_SETTING) && !in_select && (now - last_action_time > 35000)) 
+            {
+                enter_light_sleep(); //
+                
+                // 🚀 苏醒瞬间，立刻刷新 OLED 任务自己的本地时间戳，防止滑动坠落！
+                last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+                continue; //
+            }
+
+            if(in_select) //
+            {
+                draw_select_ui(&u8g2, selected_game); //
+            }
+            else //
+            {
+                switch (mode) //
+                {
+                    case MODE_CLOCK:   draw_main_clock_ui(&u8g2); break; //
+                    case MODE_BALL:    draw_ball_game(&u8g2);     break; //
+                    case MODE_DINO:    draw_dino_game(&u8g2);     break; //
+                    case MODE_PLANE:   draw_plane_game(&u8g2);    break; //
+                    case MODE_BLOOD:   draw_blood_ui(&u8g2);      break; //
+                    case MODE_SETTING: draw_setting_ui(&u8g2);    break; //
+                    default: break; //
+                }
+            }
+
+            vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD)); //
+        }
     }
 }

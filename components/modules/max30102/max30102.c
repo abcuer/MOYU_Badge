@@ -44,3 +44,12 @@ void max30102_read_fifo(void)
     fifo_red = ((uint32_t)data[0] << 16 | (uint32_t)data[1] << 8 | data[2]) & 0x03FFFF;
     fifo_ir  = ((uint32_t)data[3] << 16 | (uint32_t)data[4] << 8 | data[5]) & 0x03FFFF;
 }
+
+void max30102_sleep(bool enable) 
+{
+    if (enable) {
+        max30102_write_reg(REG_MODE_CONFIG, 0x40 | 0x80); // 保持原复位标志，或上 0x80 进入休眠
+    } else {
+        max30102_write_reg(REG_MODE_CONFIG, 0x03); // 恢复 SpO2 模式模式唤醒
+    }
+}

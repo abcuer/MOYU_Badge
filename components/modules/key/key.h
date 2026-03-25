@@ -2,6 +2,8 @@
 #define __KEY_H
 
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,10 +49,14 @@ typedef struct {
 } key_instance_s;
 
 void key_device_init(void);
+bool key_is_idle(key_type_t type);
 key_event_e key_get_event(key_type_t type);
+void key_reset_fsm(key_type_t type);
 
 #ifdef __cplusplus
 }
 #endif
+
+extern SemaphoreHandle_t key_sem;
 
 #endif

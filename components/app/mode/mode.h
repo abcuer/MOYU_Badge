@@ -25,10 +25,10 @@ typedef enum {
 
 void key_scan(void);
 void step_detect(void);
-void step_reset_today(void);
-
+void enter_light_sleep(void);
 
 extern bool in_select;
 extern StepData_t step_data;
+extern uint32_t last_action_time; 
 
 #endif

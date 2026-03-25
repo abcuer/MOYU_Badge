@@ -2,6 +2,7 @@
 #define __BMP280_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #define BMP_SDA_PIN         11
 #define BMP_SCL_PIN         10
@@ -28,6 +29,7 @@ typedef struct {
 } bmp280_data_t;
 
 void bmp280_init(void);
+void bmp280_sleep(bool enable);
 void bmp280_read_data(bmp280_data_t *bmp280);
 
 extern bmp280_data_t bmp280;

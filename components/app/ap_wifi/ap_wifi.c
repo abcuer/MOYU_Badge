@@ -1,10 +1,13 @@
+#include "string.h"
 #include "ap_wifi.h"
 #include "ws_server.h"
+#include "nvs_flash.h"
 #include "cJSON.h"
 #include "esp_spiffs.h"
-#include <sys/stat.h>
+#include "sys/stat.h"
 #include "esp_log.h"
-#include <string.h>
+#include "user_task.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
@@ -120,6 +123,7 @@ static void ws_receive_handle(uint8_t* payload,int len)
             char* password = cJSON_GetStringValue(password_js);
             snprintf(current_ssid,sizeof(current_ssid),"%s",ssid);
             snprintf(current_password,sizeof(current_password),"%s",password);
+            save_wifi_to_nvs(ssid, password); 
             ESP_LOGI(TAG,"Receive ssid:%s,password:%s,now stop http server",current_ssid,current_password);
             //此回调函数里面由websocket底层调用，不宜直接调用关闭服务器操作
             xEventGroupSetBits(apcfg_event,APCFG_BIT);  
@@ -185,11 +189,70 @@ void ap_wifi_apcfg(bool enable)
     }
 }
 
-void wifi_state_changed(WIFI_STATE state) 
+#define WIFI_NAMESPACE "storage"
+// 配对密码和wifi
+char saved_ssid[32] = {0};
+char saved_pwd[64] = {0};
+
+static void wifi_state_callback(WIFI_STATE state)
 {
-    if (state == WIFI_STATE_CONNECTED) {
-        ESP_LOGI("MAIN", "WiFi Connected Successfully!");
-    } else {
-        ESP_LOGI("MAIN", "WiFi Disconnected.");
+    if(state == WIFI_STATE_CONNECTED)
+    {
+        xEventGroupSetBits(wifi_ev, WIFI_CONNECT_BIT);
+    }
+}
+
+void save_wifi_to_nvs(const char* ssid, const char* password) {
+    nvs_handle_t my_handle;
+    esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &my_handle);
+    if (err == ESP_OK) {
+        nvs_set_str(my_handle, "ssid", ssid);
+        nvs_set_str(my_handle, "password", password);
+        nvs_commit(my_handle); // 提交保存
+        nvs_close(my_handle);
+        ESP_LOGI("NVS", "Wi-Fi 信息已成功保存到 NVS！");
+    }
+}
+
+// 📖 从 NVS 读取 Wi-Fi 信息
+bool load_wifi_from_nvs(char* ssid, size_t ssid_len, char* password, size_t pwd_len) {
+    nvs_handle_t my_handle;
+    esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READONLY, &my_handle);
+    if (err != ESP_OK) return false;
+
+    size_t s_len = ssid_len; 
+    size_t p_len = pwd_len;
+
+    // 读取 SSID
+    err = nvs_get_str(my_handle, "ssid", ssid, &s_len);
+    if (err != ESP_OK) { 
+        nvs_close(my_handle); 
+        return false; 
+    }
+
+    // 读取 Password
+    err = nvs_get_str(my_handle, "password", password, &p_len);
+    nvs_close(my_handle); //
+
+    return (err == ESP_OK);
+}
+
+void ap_wifi_go(void)
+{
+    bool has_saved_wifi = load_wifi_from_nvs(saved_ssid, sizeof(saved_ssid), saved_pwd, sizeof(saved_pwd));
+
+    if (has_saved_wifi) {
+        // 🟢 情况 A：曾经配过网，直接发起连接！
+        ESP_LOGI("MAIN", "检测到历史Wi-Fi配置：%s，直接自动连接...", saved_ssid);
+        
+        wifi_manager_init(wifi_state_callback); // 仅初始化 STA 即可
+        wifi_manager_connect(saved_ssid, saved_pwd); // 直接连接
+    } 
+    else {
+        // 🔴 情况 B：白板新机器，开启 AP 热点逼迫用户配网
+        ESP_LOGI("MAIN", "未检测到Wi-Fi配置，启动 AP 网页配网模式...");
+        
+        ap_wifi_init(wifi_state_callback); //
+        ap_wifi_apcfg(true); // 开启 AP 热点
     }
 }

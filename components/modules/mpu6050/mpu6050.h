@@ -2,6 +2,7 @@
 #define __MPU6050_H
 
 #include "stdint.h"
+#include "stdbool.h"
 
 // 零偏校准次数
 #define CALIBRATION_SAMPLES 500
@@ -32,6 +33,7 @@ typedef struct{
 
 void mpu6050_init(void);
 void mpu_get_data(Acc_Struct *acc, Gyro_Struct *gyro);
+void mpu6050_sleep(bool enable);
 
 extern Acc_Struct acc;
 extern Gyro_Struct gyro;
