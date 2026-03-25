@@ -11,14 +11,27 @@ extern TaskHandle_t sync_task_handle;
 void key_scan(void)
 {
     key_event_e event = key_get_event(KEY_USER);
+ 
+    const int main_app_count = sizeof(main_app_list) / sizeof(main_app_list[0]);
+    const int sub_game_count = sizeof(sub_game_list) / sizeof(sub_game_list[0]);
 
     if (event != KEY_EVENT_NONE) {
-        // 🚀 只要触发了短按或者长按，重置倒计时
+        // 只要触发了短按或者长按，重置倒计时
         last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
     }
 
-    const int main_app_count = sizeof(main_app_list) / sizeof(main_app_list[0]);
-    const int sub_game_count = sizeof(sub_game_list) / sizeof(sub_game_list[0]);
+    if (!is_first_sync_done && event == KEY_EVENT_LONG) {
+        erase_wifi_from_nvs(); // 擦除 NVS
+
+        // 强行刷一次屏幕提示（因为 OLED 任务优先级低，我们在这里直接接管屏幕）
+        u8g2_ClearBuffer(&u8g2);
+        u8g2_SetFont(&u8g2, u8g2_font_6x10_tf);
+        u8g2_DrawStr(&u8g2, 2, 35, "Resetting WiFi...");
+        u8g2_DrawStr(&u8g2, 2, 47, "Rebooting now...");
+        u8g2_SendBuffer(&u8g2);
+        
+        esp_restart(); // 重启芯片！
+    }
 
     if (event == KEY_EVENT_SHORT)
     {

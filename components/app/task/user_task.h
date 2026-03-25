@@ -16,5 +16,6 @@ void start_oled_task(void *pvParameters);
 void start_key_task(void *pvParameters);
 
 extern EventGroupHandle_t  wifi_ev;
+extern volatile bool is_first_sync_done;
 
 #endif

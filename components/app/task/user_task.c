@@ -107,49 +107,47 @@ void start_oled_task(void *pvParameters)
     u8g2_init(); //
 
     // 🎯 1. 只有开机第一次没同步完，才进这里
-    while (!is_first_sync_done) { 
+    while (!is_first_sync_done) 
+    {
         draw_syncing_ui(&u8g2); //
-        vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD)); //
+        vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD)); 
     }
 
     // 🎯 2. 用一个绝对无法跳出的外层 while(1) 锁死任务，绝不允许代码坠落到上面去！
-    while (1) 
+    last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS; // 进场先刷一次时间戳
+
+    while (1) // 内部 UI 刷新小循环
     {
-        last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS; // 进场先刷一次时间戳
+        uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS; 
 
-        while (1) // 内部 UI 刷新小循环
+        // 🎯 低功耗守卫 (35秒无操作)
+        if ((mode == MODE_CLOCK || mode == MODE_GAME_SELECT || mode == MODE_SETTING) && !in_select && (now - last_action_time > 35000)) 
         {
-            uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS; 
-
-            // 🎯 低功耗守卫 (35秒无操作)
-            if ((mode == MODE_CLOCK || mode == MODE_GAME_SELECT || mode == MODE_SETTING) && !in_select && (now - last_action_time > 35000)) 
-            {
-                enter_light_sleep(); //
-                
-                // 🚀 苏醒瞬间，立刻刷新 OLED 任务自己的本地时间戳，防止滑动坠落！
-                last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-                continue; //
-            }
-
-            if(in_select) //
-            {
-                draw_select_ui(&u8g2, selected_game); //
-            }
-            else //
-            {
-                switch (mode) //
-                {
-                    case MODE_CLOCK:   draw_main_clock_ui(&u8g2); break; //
-                    case MODE_BALL:    draw_ball_game(&u8g2);     break; //
-                    case MODE_DINO:    draw_dino_game(&u8g2);     break; //
-                    case MODE_PLANE:   draw_plane_game(&u8g2);    break; //
-                    case MODE_BLOOD:   draw_blood_ui(&u8g2);      break; //
-                    case MODE_SETTING: draw_setting_ui(&u8g2);    break; //
-                    default: break; //
-                }
-            }
-
-            vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD)); //
+            enter_light_sleep(); //
+            
+            // 🚀 苏醒瞬间，立刻刷新 OLED 任务自己的本地时间戳，防止滑动坠落！
+            last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+            continue; //
         }
+
+        if(in_select) //
+        {
+            draw_select_ui(&u8g2, selected_game); //
+        }
+        else //
+        {
+            switch (mode) //
+            {
+                case MODE_CLOCK:   draw_main_clock_ui(&u8g2); break; //
+                case MODE_BALL:    draw_ball_game(&u8g2);     break; //
+                case MODE_DINO:    draw_dino_game(&u8g2);     break; //
+                case MODE_PLANE:   draw_plane_game(&u8g2);    break; //
+                case MODE_BLOOD:   draw_blood_ui(&u8g2);      break; //
+                case MODE_SETTING: draw_setting_ui(&u8g2);    break; //
+                default: break; //
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD)); //
     }
 }

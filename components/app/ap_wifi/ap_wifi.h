@@ -22,6 +22,7 @@ void ap_wifi_set(const char* ssid,const char* password);
 void ap_wifi_apcfg(bool enable);
 
 void save_wifi_to_nvs(const char* ssid, const char* password);
+void erase_wifi_from_nvs(void);
 void ap_wifi_go(void);
 
 #endif

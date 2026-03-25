@@ -256,3 +256,16 @@ void ap_wifi_go(void)
         ap_wifi_apcfg(true); // 开启 AP 热点
     }
 }
+
+
+void erase_wifi_from_nvs(void) {
+    nvs_handle_t my_handle;
+    esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &my_handle);
+    if (err == ESP_OK) {
+        nvs_erase_key(my_handle, "ssid");
+        nvs_erase_key(my_handle, "password");
+        nvs_commit(my_handle); // 提交生效
+        nvs_close(my_handle);
+        ESP_LOGI("NVS", "🗑️ 旧 Wi-Fi 配置已成功擦除！");
+    }
+}
