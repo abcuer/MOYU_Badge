@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include "bsp_iic.h"
 
-#define MAX_SDA_PIN 14
-#define MAX_SCL_PIN 13
+#define MAX_SDA_PIN 18
+#define MAX_SCL_PIN 17
 
 /* 器件地址 */
 #define MAX30102_ADDRESS    0x57

@@ -78,7 +78,7 @@ void key_device_init(void) {
  */
 key_event_e key_get_event(key_type_t type) 
 {
-    if (type >= KEY_NUM) return KEY_EVENT_NONE;
+    if (type > KEY_NUM) return KEY_EVENT_NONE;
 
     key_instance_s *ins = &keys[type];
     uint8_t curr_level = get_key_level(type);

@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define KEY_NUM 1 
-#define USER_KEY_PIN    4 
+#define USER_KEY_PIN    3 
 
 // 触发阈值定义（单位：ms）
 #define KEY_DEBOUNCE_MS    20    // 消抖时间
