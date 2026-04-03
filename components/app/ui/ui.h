@@ -1,55 +1,53 @@
 #ifndef __UI_H
 #define __UI_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
 #include "u8g2.h"
 
 typedef enum {
-    MODE_CLOCK = 0,    // 1级：时钟
-    MODE_BLOOD,        // 1级：血氧检测
-    MODE_GAME_SELECT,  // 1级：游戏二级菜单入口 (走马灯显示 "Game")
-    MODE_SETTING,      // 1级：关于/设置
-    
-    // 以下为 2 级：具体的子游戏
-    MODE_BALL,         
-    MODE_DINO,         
-    MODE_PLANE,        
+    MODE_CLOCK = 0,
+    MODE_BLOOD,
+    MODE_RADIO,
+    MODE_GAME_SELECT,
+    MODE_SETTING,
+    MODE_BALL,
+    MODE_DINO,
+    MODE_PLANE,
 } ui_mode_e;
 
-// 1 级主菜单 App 轮播列表
 static const ui_mode_e main_app_list[] = {
-    MODE_CLOCK, 
-    MODE_BLOOD, 
-    MODE_GAME_SELECT, 
-    MODE_SETTING
+    MODE_CLOCK,
+    MODE_BLOOD,
+    MODE_RADIO,
+    MODE_GAME_SELECT,
+    MODE_SETTING,
 };
 
-// 2 级子菜单 游戏轮播列表
 static const ui_mode_e sub_game_list[] = {
-    MODE_BALL, 
-    MODE_DINO, 
+    MODE_BALL,
+    MODE_DINO,
     MODE_PLANE,
-    MODE_GAME_SELECT, 
+    MODE_GAME_SELECT,
 };
 
 typedef struct {
     const char *name;
-    uint16_t icon_code; // 改用 U8G2 内置字库的 Unicode 编码
+    uint16_t icon_code;
 } game_info_t;
 
-
-/*
-    悬浮球
-*/
-// 定义金币和障碍物结构体
 typedef struct {
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
 } Obstacle_t;
 
-/*
-    恐龙快跑
-*/
-// 定义恐龙快跑对象
 typedef struct {
-    int x, y, r;
+    int x;
+    int y;
+    int r;
     bool active;
 } Coin_t;
 
@@ -58,7 +56,6 @@ typedef enum {
     STATE_GAMEOVER
 } GameState_t;
 
-// 恐龙对象
 typedef struct {
     float y;
     float vy;
@@ -66,15 +63,13 @@ typedef struct {
     bool is_ducking;
 } Dino_t;
 
-// 障碍物对象
 typedef struct {
     int x;
-    int type;       // 0: 仙人掌, 1: 飞鸟
-    int bird_y;     // 飞鸟的随机高度
-    float speed;    // 移动速度（用 float 支持平滑微调）
+    int type;
+    int bird_y;
+    float speed;
 } Din_Obstacle_t;
 
-// 游戏总控
 typedef struct {
     GameState_t state;
     float score;
@@ -83,35 +78,31 @@ typedef struct {
     Din_Obstacle_t obs;
 } DinoGame_t;
 
-/*
-    飞机大战
-*/
-// 射速 & 子弹数
 #define MAX_BULLETS 25
-// 同时出现的敌机数
 #define MAX_ENEMIES 3
 
-// 战机对象
 typedef struct {
-    float x, y;
-    float vx, vy;
-    int width, height;
+    float x;
+    float y;
+    float vx;
+    float vy;
+    int width;
+    int height;
 } Plane_t;
 
-// 子弹对象
 typedef struct {
-    int x, y;
+    int x;
+    int y;
     bool active;
 } Bullet_t;
 
-// 敌机对象
 typedef struct {
-    int x, y;
+    int x;
+    int y;
     bool active;
     int speed;
 } Enemy_t;
 
-// 游戏总控
 typedef struct {
     GameState_t state;
     int score;
@@ -121,28 +112,21 @@ typedef struct {
 } AirGame_t;
 
 void draw_syncing_ui(u8g2_t *u8g2);
-
 void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected);
-
 void draw_main_clock_ui(u8g2_t *u8g2);
-
+void draw_radio_ui(u8g2_t *u8g2);
 void draw_ball_game(u8g2_t *u8g2);
 void draw_dino_game(u8g2_t *u8g2);
 void dino_game_reset(DinoGame_t *game);
-
 void draw_plane_game(u8g2_t *u8g2);
 void air_game_reset(AirGame_t *game);
-
 void draw_blood_ui(u8g2_t *u8g2);
 void reset_blood_ui_timer(void);
-
 void draw_setting_ui(u8g2_t *u8g2);
 
-extern int menu_layer; // 1代表一级菜单，2代表二级菜单
-
-// 声明全局游戏对象
+extern int menu_layer;
 extern ui_mode_e mode;
-extern ui_mode_e selected_game;  // 当前选中的游戏
+extern ui_mode_e selected_game;
 extern DinoGame_t dino_game;
 extern AirGame_t air_game;
 

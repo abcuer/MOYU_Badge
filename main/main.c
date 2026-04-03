@@ -15,6 +15,7 @@ void app_main(void)
     nvs_flash_init();
     wifi_ev = xEventGroupCreate();
     ap_wifi_go();
+    audio_player_init();
 
     // ── 第二步：立即启动依赖WiFi的任务 ──────
     // WiFi已经在后台连接，同步任务会自己等待连接成功

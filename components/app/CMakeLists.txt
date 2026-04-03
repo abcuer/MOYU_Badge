@@ -24,7 +24,7 @@ idf_component_register(
         "."
 
     REQUIRES 
-        bsp modules 
+        bsp modules audio
         nvs_flash esp_wifi esp_event esp_http_server json esp_http_client
         spiffs mbedtls mqtt lwip esp_netif esp_timer
 )

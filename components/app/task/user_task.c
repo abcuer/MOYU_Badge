@@ -139,6 +139,7 @@ void start_oled_task(void *pvParameters)
             switch (mode) //
             {
                 case MODE_CLOCK:   draw_main_clock_ui(&u8g2); break; //
+                case MODE_RADIO:   draw_radio_ui(&u8g2);      break; //
                 case MODE_BALL:    draw_ball_game(&u8g2);     break; //
                 case MODE_DINO:    draw_dino_game(&u8g2);     break; //
                 case MODE_PLANE:   draw_plane_game(&u8g2);    break; //

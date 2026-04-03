@@ -130,6 +130,7 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
     static const game_info_t info_db[] = {
         [MODE_CLOCK]       = {"Clock",    123}, 
         [MODE_BLOOD]       = {"SpO2",     238},  
+        [MODE_RADIO]       = {"Radio",    150},
         [MODE_GAME_SELECT] = {"Game",     207}, 
         [MODE_SETTING]     = {"System",   129},
         [MODE_BALL]        = {"Ball",     175},  
@@ -207,6 +208,65 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
     u8g2_DrawStr(u8g2, text_x, center_y + h + 11, cur_name);
     u8g2_SetDrawColor(u8g2, 1); 
 
+    u8g2_SendBuffer(u8g2);
+}
+
+void draw_radio_ui(u8g2_t *u8g2)
+{
+    const audio_station_t *station = audio_player_get_station();
+    audio_state_t state = audio_player_get_state();
+    const char *wifi_text = wifi_manager_is_connect() ? "WiFi: Connected" : "WiFi: Waiting";
+    const char *state_text = "Idle";
+    uint32_t ms_now = (uint32_t)(esp_timer_get_time() / 1000);
+
+    switch (state) {
+        case AUDIO_STATE_BUFFERING:
+            state_text = "Buffering";
+            break;
+        case AUDIO_STATE_PLAYING:
+            state_text = "Playing";
+            break;
+        case AUDIO_STATE_ERROR:
+            state_text = "Error";
+            break;
+        case AUDIO_STATE_NO_WIFI:
+            state_text = "No Wi-Fi";
+            break;
+        case AUDIO_STATE_IDLE:
+        default:
+            state_text = "Idle";
+            break;
+    }
+
+    u8g2_ClearBuffer(u8g2);
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+    u8g2_DrawStr(u8g2, 36, 10, "NET RADIO");
+    u8g2_DrawHLine(u8g2, 0, 12, 128);
+
+    u8g2_DrawStr(u8g2, 2, 24, wifi_text);
+    u8g2_DrawStr(u8g2, 2, 36, state_text);
+
+    // Long station names are clipped into a narrow window and scrolled horizontally.
+    u8g2_DrawFrame(u8g2, 2, 40, 124, 12);
+    u8g2_SetClipWindow(u8g2, 4, 40, 124, 52);
+    int text_w = u8g2_GetStrWidth(u8g2, station->name);
+    int scroll_x = 6;
+    if (text_w > 116) {
+        scroll_x = 6 - ((ms_now / 120) % (text_w + 16));
+    }
+    u8g2_DrawStr(u8g2, scroll_x, 49, station->name);
+    u8g2_SetMaxClipWindow(u8g2);
+
+    if (state == AUDIO_STATE_BUFFERING || state == AUDIO_STATE_PLAYING) {
+        // Lightweight activity bar so the page still feels alive on a tiny OLED.
+        int bar_w = (ms_now / 80) % 96;
+        u8g2_DrawFrame(u8g2, 16, 27, 96, 7);
+        u8g2_DrawBox(u8g2, 16, 27, bar_w, 7);
+    }
+
+    u8g2_DrawHLine(u8g2, 0, 55, 128);
+    u8g2_DrawStr(u8g2, 2, 63, "SHORT NEXT");
+    u8g2_DrawStr(u8g2, 76, 63, "LONG MENU");
     u8g2_SendBuffer(u8g2);
 }
 

@@ -11,6 +11,7 @@ set(EXTRA_COMPONENT_DIRS
     "components/app"
     "components/bsp"
     "components/modules"
+    "components/audio"
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)

@@ -34,6 +34,7 @@
 #include "status.h"
 #include "ui.h"
 #include "user_task.h"
+#include "audio_player.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"

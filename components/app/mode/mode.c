@@ -8,6 +8,18 @@ uint32_t last_action_time = 0;
 extern TaskHandle_t sensor_task_handle;
 extern TaskHandle_t sync_task_handle;
 
+static void app_mode_set(ui_mode_e next_mode)
+{
+    // Radio owns background resources, so entering/leaving that page also drives player lifecycle.
+    if (mode == MODE_RADIO && next_mode != MODE_RADIO) {
+        audio_player_exit_radio_mode();
+    }
+    mode = next_mode;
+    if (mode == MODE_RADIO) {
+        audio_player_enter_radio_mode();
+    }
+}
+
 void key_scan(void)
 {
     key_event_e event = key_get_event(KEY_USER);
@@ -57,7 +69,11 @@ void key_scan(void)
         }
         else
         {
-            if (mode == MODE_DINO && dino_game.state == STATE_GAMEOVER) {
+            if (mode == MODE_RADIO) {
+                // In radio mode, short press is reserved for station cycling instead of in-app actions.
+                audio_player_next_station();
+            }
+            else if (mode == MODE_DINO && dino_game.state == STATE_GAMEOVER) {
                 dino_game_reset(&dino_game); 
             }
             else if (mode == MODE_PLANE && air_game.state == STATE_GAMEOVER) {
@@ -69,6 +85,9 @@ void key_scan(void)
     {
         if (!in_select)
         {
+            if (mode == MODE_RADIO) {
+                audio_player_exit_radio_mode();
+            }
             selected_game = mode; 
             in_select = true;
             
@@ -91,7 +110,7 @@ void key_scan(void)
                     selected_game = MODE_GAME_SELECT; 
                 } else {
                     // 开启具体物理游戏
-                    mode = selected_game;
+                    app_mode_set(selected_game);
                     in_select = false;
                 }
             } 
@@ -102,7 +121,7 @@ void key_scan(void)
                     selected_game = MODE_BALL; 
                 } else {
                     // 开启普通 App (Clock, Setting, Blood)
-                    mode = selected_game;
+                    app_mode_set(selected_game);
                     in_select = false;
                 }
             }
