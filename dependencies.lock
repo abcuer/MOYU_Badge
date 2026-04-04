@@ -1,0 +1,32 @@
+dependencies:
+  espressif/esp_audio_codec:
+    component_hash: af4663830bc73eca58febcc34a976d003465e78ed57458aa00a14b231e392ca1
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.4'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.4.1
+  espressif/led_strip:
+    component_hash: 28621486f77229aaf81c71f5e15d6fbf36c2949cf11094e07090593e659e7639
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 3.0.3
+  idf:
+    source:
+      type: idf
+    version: 5.3.4
+direct_dependencies:
+- espressif/esp_audio_codec
+- espressif/led_strip
+- idf
+manifest_hash: 6184a5522c706f858f3717ce59eaec7d75646a80a9cbc9012d70b0e6430645b0
+target: esp32s3
+version: 2.0.0
