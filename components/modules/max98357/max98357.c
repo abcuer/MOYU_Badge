@@ -3,6 +3,7 @@
 #include "driver/i2s_common.h"
 #include "driver/i2s_std.h"
 #include "esp_log.h"
+#include "freertos/semphr.h"
 
 #define MAX98357_DMA_DESC_NUM        8
 #define MAX98357_DMA_FRAME_NUM       512
@@ -13,6 +14,22 @@ static const char *TAG = "max98357";
 static i2s_chan_handle_t s_tx_handle = NULL;
 static uint32_t s_i2s_rate = 0;
 static uint8_t s_i2s_channels = 0;
+static SemaphoreHandle_t s_i2s_mutex = NULL;
+static portMUX_TYPE s_i2s_mutex_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static SemaphoreHandle_t max98357_get_mutex(void)
+{
+    SemaphoreHandle_t mutex;
+
+    portENTER_CRITICAL(&s_i2s_mutex_lock);
+    if (s_i2s_mutex == NULL) {
+        s_i2s_mutex = xSemaphoreCreateMutex();
+    }
+    mutex = s_i2s_mutex;
+    portEXIT_CRITICAL(&s_i2s_mutex_lock);
+
+    return mutex;
+}
 
 static esp_err_t max98357_write_all(const uint8_t *data, size_t len, TickType_t timeout_ticks)
 {
@@ -38,6 +55,12 @@ static esp_err_t max98357_write_all(const uint8_t *data, size_t len, TickType_t 
 
 void max98357_deinit(void)
 {
+    SemaphoreHandle_t mutex = max98357_get_mutex();
+    if (mutex == NULL) {
+        return;
+    }
+
+    xSemaphoreTake(mutex, portMAX_DELAY);
     if (s_tx_handle != NULL) {
         i2s_channel_disable(s_tx_handle);
         i2s_del_channel(s_tx_handle);
@@ -46,19 +69,33 @@ void max98357_deinit(void)
 
     s_i2s_rate = 0;
     s_i2s_channels = 0;
+    xSemaphoreGive(mutex);
 }
 
 esp_err_t max98357_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample)
 {
+    SemaphoreHandle_t mutex = max98357_get_mutex();
+    if (mutex == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
     if (sample_rate == 0 || (channels != 1 && channels != 2) || bits_per_sample != 16) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    xSemaphoreTake(mutex, portMAX_DELAY);
     if (s_tx_handle != NULL && s_i2s_rate == sample_rate && s_i2s_channels == channels) {
+        xSemaphoreGive(mutex);
         return ESP_OK;
     }
 
-    max98357_deinit();
+    if (s_tx_handle != NULL) {
+        i2s_channel_disable(s_tx_handle);
+        i2s_del_channel(s_tx_handle);
+        s_tx_handle = NULL;
+    }
+    s_i2s_rate = 0;
+    s_i2s_channels = 0;
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = MAX98357_DMA_DESC_NUM;
@@ -68,6 +105,7 @@ esp_err_t max98357_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per
     esp_err_t ret = i2s_new_channel(&chan_cfg, &s_tx_handle, NULL);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "alloc i2s channel failed: %d", ret);
+        xSemaphoreGive(mutex);
         return ret;
     }
 
@@ -91,39 +129,56 @@ esp_err_t max98357_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per
     ret = i2s_channel_init_std_mode(s_tx_handle, &std_cfg);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "init i2s std failed: %d", ret);
-        max98357_deinit();
+        i2s_del_channel(s_tx_handle);
+        s_tx_handle = NULL;
+        xSemaphoreGive(mutex);
         return ret;
     }
 
     ret = i2s_channel_enable(s_tx_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "enable i2s failed: %d", ret);
-        max98357_deinit();
+        i2s_del_channel(s_tx_handle);
+        s_tx_handle = NULL;
+        xSemaphoreGive(mutex);
         return ret;
     }
 
     s_i2s_rate = sample_rate;
     s_i2s_channels = channels;
+    xSemaphoreGive(mutex);
     return ESP_OK;
 }
 
 esp_err_t max98357_write(const uint8_t *pcm_data, size_t pcm_len, uint8_t channels, TickType_t timeout_ticks)
 {
+    SemaphoreHandle_t mutex = max98357_get_mutex();
+    if (mutex == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    xSemaphoreTake(mutex, portMAX_DELAY);
     if (s_tx_handle == NULL) {
+        xSemaphoreGive(mutex);
         return ESP_ERR_INVALID_STATE;
     }
     if (pcm_data == NULL || pcm_len == 0) {
+        xSemaphoreGive(mutex);
         return ESP_OK;
     }
     if ((pcm_len % sizeof(int16_t)) != 0) {
+        xSemaphoreGive(mutex);
         return ESP_ERR_INVALID_SIZE;
     }
 
     if (channels == 2) {
-        return max98357_write_all(pcm_data, pcm_len, timeout_ticks);
+        esp_err_t ret = max98357_write_all(pcm_data, pcm_len, timeout_ticks);
+        xSemaphoreGive(mutex);
+        return ret;
     }
 
     if (channels != 1 || pcm_len > MAX98357_MAX_INPUT_PCM_BYTES) {
+        xSemaphoreGive(mutex);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -136,5 +191,7 @@ esp_err_t max98357_write(const uint8_t *pcm_data, size_t pcm_len, uint8_t channe
         stereo_buf[2 * i + 1] = src[i];
     }
 
-    return max98357_write_all((const uint8_t *)stereo_buf, pcm_len * 2, timeout_ticks);
+    esp_err_t ret = max98357_write_all((const uint8_t *)stereo_buf, pcm_len * 2, timeout_ticks);
+    xSemaphoreGive(mutex);
+    return ret;
 }

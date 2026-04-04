@@ -945,7 +945,6 @@ void audio_player_exit_radio_mode(void)
     s_request_token++;
     portEXIT_CRITICAL(&s_audio_lock);
     audio_pcm_release();
-    max98357_deinit();
     audio_set_state(AUDIO_STATE_IDLE);
     audio_notify_task();
 }
