@@ -20,6 +20,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "max98357.h"
+#include "settings.h"
 
 typedef struct {
     int metaint;
@@ -31,7 +32,7 @@ typedef struct {
 static const char *TAG = "audio_player";
 
 // 音量设置
-#define AUDIO_DEFAULT_VOLUME_PERCENT         8
+#define AUDIO_DEFAULT_VOLUME_PERCENT         SETTINGS_DEFAULT_VOLUME
 
 #define AUDIO_MAX_CONSECUTIVE_DECODE_ERRORS  24
 #define AUDIO_MAX_CONSECUTIVE_EMPTY_READS    300
@@ -50,14 +51,14 @@ static const char *TAG = "audio_player";
 #define AUDIO_TASK_STACK_SIZE                12288
 
 static const audio_station_t s_stations[] = {
-    { "SHDG101", "http://lhttp.qingting.fm/live/274/64k.mp3" },
-    { "Love1037", "http://lhttp.qingting.fm/live/273/64k.mp3" },
-    { "BJ974", "http://lhttp.qingting.fm/live/332/64k.mp3" },
-    { "SZFY971", "http://lhttp.qingting.fm/live/1271/64k.mp3" },
-    { "GD993", "http://lhttp.qingting.fm/live/1260/64k.mp3" },
-    { "JSFM", "http://lhttp.qingting.fm/live/4938/64k.mp3" },
-    { "XHYY", "http://lhttp.qingting.fm/live/20210755/64k.mp3" },
-    { "NDYY1022", "http://lhttp.qingting.fm/live/20500066/64k.mp3" },
+    { "上海动感101", "http://lhttp.qingting.fm/live/274/64k.mp3" },
+    { "上海Love 103.7", "http://lhttp.qingting.fm/live/273/64k.mp3" },
+    { "北京音乐广播", "http://lhttp.qingting.fm/live/332/64k.mp3" },
+    { "深圳飞扬971", "http://lhttp.qingting.fm/live/1271/64k.mp3" },
+    { "广东993", "http://lhttp.qingting.fm/live/1260/64k.mp3" },
+    { "江苏经典流行音乐", "http://lhttp.qingting.fm/live/4938/64k.mp3" },
+    { "星火音乐", "http://lhttp.qingting.fm/live/20210755/64k.mp3" },
+    { "年代音乐102.2", "http://lhttp.qingting.fm/live/20500066/64k.mp3" },
 };
 
 TaskHandle_t s_audio_task = NULL;

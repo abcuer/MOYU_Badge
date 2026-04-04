@@ -16,11 +16,13 @@ static void app_mode_set(ui_mode_e next_mode)
         audio_player_exit_radio_mode();
     }
     if (next_mode != MODE_SETTING) {
-        setting_ui_set_wifi_reset_armed(false);
+        setting_ui_reset_state();
     }
     mode = next_mode;
     if (mode == MODE_RADIO) {
         audio_player_enter_radio_mode();
+    } else if (mode == MODE_SETTING) {
+        setting_ui_reset_state();
     }
 }
 
@@ -71,7 +73,9 @@ void key_scan(void)
         else
         {
             if (mode == MODE_SETTING) {
-                setting_ui_toggle_wifi_reset_armed();
+                if (setting_ui_handle_short_press()) {
+                    return;
+                }
             }
             else if (mode == MODE_RADIO) {
                 // In radio mode, short press is reserved for station cycling instead of in-app actions.
@@ -87,23 +91,16 @@ void key_scan(void)
     }
     else if (event == KEY_EVENT_LONG)
     {
-        if (!in_select && mode == MODE_SETTING && setting_ui_is_wifi_reset_armed()) {
-            u8g2_ClearBuffer(&u8g2);
-            u8g2_SetFont(&u8g2, u8g2_font_6x10_tf);
-            u8g2_DrawStr(&u8g2, 2, 35, "Resetting WiFi...");
-            u8g2_DrawStr(&u8g2, 2, 47, "Rebooting now...");
-            u8g2_SendBuffer(&u8g2);
-            erase_wifi_from_nvs();
-            esp_restart();
-        }
-
         if (!in_select)
         {
+            if (mode == MODE_SETTING && setting_ui_handle_long_press()) {
+                return;
+            }
             if (mode == MODE_RADIO) {
                 audio_player_exit_radio_mode();
             }
             if (mode == MODE_SETTING) {
-                setting_ui_set_wifi_reset_armed(false);
+                setting_ui_reset_state();
             }
             selected_game = mode; 
             in_select = true;
@@ -203,79 +200,4 @@ void enter_light_sleep(void)
     }
 
     gpio_intr_enable(USER_KEY_PIN);
-}
-
-// 濠电姷鏁告慨鎾晝閵夆晛鍨傞柛顭戝亝閸欏繘鏌嶉崫鍕櫧鐎规挷绶氶弻娑㈠箛椤掆偓缁狙呯磽瀹ュ懏顥炵紒缁樼箖缁绘盯宕归鐟颁壕闁哄稁鍋傞悞濠冪節闂堟侗鍎愰柡鍜佸墴閺屾盯顢曢敐鍥╃杽闂佺懓澹婇崜姘辨崲濠靛洨绡€闁告劑鍔岀紒锟闂傚倷鐒︾€笛呯矙閹达附鍤愭い鏍仜闂傤垶鏌ц箛娑掑亾濞戞艾澧鹃梻浣烘嚀椤曨參宕戦悢鑲虹喖宕ㄧ€涙鍘遍梺鍦劋閺屻劑鎯冮幋鐘电＜?
-#define SVM_BUF_SIZE 5
-
-static StepFSM_t  fsm_state    = STEP_STATE_IDLE;
-static uint32_t   last_step_tick = 0;   // 婵犵數鍋為崹鍫曞箰閹间焦鏅濋柨婵嗘川閸楁岸鏌℃径瀣劸婵為棿鍗抽弻鏇熺珶椤栨艾顏柡鍡欏█濮婃椽宕崟顐ｆ闂佺粯鐗滈崢褑鐏嬮梺绉嗗嫷娈旂紒?
-
-static float svm_buf[SVM_BUF_SIZE] = {0};
-static int   svm_idx = 0;
-
-StepData_t step_data = {0};
-
-static float svm_smooth(float new_val)
-{
-    svm_buf[svm_idx] = new_val;
-    // 闂傚倸鍊搁崐鍝モ偓姘煎弮瀹曟繈寮撮姀鐘虫К?svm_idx 濠电姵顔栭崰妤勬懌闂佺儵鍓濆ú婊堝箲閵忕姭鏋庨柟鎹愭珪瀹?[0, SVM_BUF_SIZE - 1] 婵犵數鍋為崹鍫曞蓟閵娾晩鏁勫璺好″☉銏犻敜婵°倓鐒﹀▍鏍倵閸忓浜鹃梺閫炲苯澧伴柛鎺撳浮閺屻劎鈧綆鍏橀弸鏍倵楠炲灝鍔氭俊顐ｎ殜椤㈡濮€閵堝棛鍘?
-    svm_idx = (svm_idx + 1) % SVM_BUF_SIZE; 
-
-    float sum = 0;
-    for (int i = 0; i < SVM_BUF_SIZE; i++) sum += svm_buf[i];
-    return sum / SVM_BUF_SIZE;
-}
-
-void step_detect(void)
-{
-    mpu_get_data(&acc, &gyro);
-    
-    float svm = sqrtf(acc.x*acc.x + acc.y*acc.y + acc.z*acc.z) / 16384.0f;
-    float svm_f = svm_smooth(svm);
-    ESP_LOGI("SVM", "SVM: %.2f", svm_f);
-    ESP_LOGI("SVM", "STEP: %u", (unsigned int)step_data.today_steps);
-    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
-
-    switch (fsm_state)
-    {
-        case STEP_STATE_IDLE:
-            if (svm_f > STEP_THRESHOLD_HIGH) {
-                fsm_state = STEP_STATE_HIGH;
-            }
-            break;
-
-        case STEP_STATE_HIGH:
-            if (svm_f < STEP_THRESHOLD_LOW){ 
-                uint32_t interval = now - last_step_tick;
-
-                // 1. 闂傚倷绀侀幉锟犳偡椤栨稓顩叉繝闈涙４閼板灝霉閿濆懎顥忛柛銈嗘礋閺屽秷顧侀柛鎾跺枎椤曪綁鎮介崨濠冨劒闁荤姴娲犻埀顒€鍟挎竟瀣攽閻愭潙鐏﹂柟鍛婃尦瀹曟垿骞樼€靛摜顔曢梺绯曗偓宕囩妞ゎ偄顦辩槐鎺撴綇閵娧呯杽濡ょ姷鍋涢澶婎嚕娴犲鏁勯柦妯侯槷婢规洟姊洪崨濠勨槈闁宦板姂閺佸秹鎮㈤崗灏栨嫽闂佸憡渚楅崰妤呭煕閹邦厺绻嗛柣鎰絻閳ь剙鐏濋～蹇旂節濮橆剛楠囬梺鐟邦嚟閸嬬娀宕ラ鈶╂斀妞ゆ梻鏅粻鎵磼闊厾鐭欓柟顔哄劦閹虫粓鎮藉▓鎸庨敜闂備焦鍎崇换鎺椼€佹繝鍥风稏闁挎洖鍊哥痪褔鏌嶆潪鎷屽厡濠⒀勭⊕閵囧嫰骞掗弬澶告闂佺懓纾繛鈧€规洘锕㈡俊鎼佹晜閹冩瘣闂?婵?200ms ~ 2000ms)
-                if (last_step_tick == 0 || (interval > STEP_MIN_INTERVAL_MS && interval < STEP_MAX_INTERVAL_MS))
-                {
-                    step_data.total_steps++;
-                    step_data.today_steps++;
-
-                    if (last_step_tick > 0) {
-                        step_data.cadence = 60000.0f / interval;
-                        step_data.is_walking = true;
-                    }
-                    
-                    last_step_tick = now; // 闂?闂傚倷绀侀幉锟犳偡椤栨稓顩叉繝闈涙４閼板灝霉閿濆洤鍔嬪┑顖氥偢閺屽秹鍩℃担鍛婄亾闂佸憡鏌ㄧ€氫即寮婚悢琛″亾濞戞顏呮叏閸パ€鏀芥い鏃傛櫕濞叉挳鏌℃担鍝バゅù鐙呯畵楠炲棜顧侀柡瀣у亾闂傚倷鑳堕、濠傗枖濞戙垺鏅濋柕濞у嫬搴婇梺鍝勮癁鐏炵偓銆冮梻渚€娼чˇ顓㈠磹濡ゅ啰鐭欏┑鐘插€靛Σ鍫ユ煙閹呯暛闁逞屽厴閸嬫捇姊洪柅鐐茶嫰婢ь垳绱掗鑲╁ⅱ缂侇噮鍙冨畷銊╊敊闁款垱鐏冮梻渚€鈧偛鑻晶顔姐亜椤愮姴鐏插┑锛勬焿椤︽娊鏌ｉ敐澶夋喚闁哄本鐩崺鈩冩媴鐟欏嫬鍓甸梻渚€娼荤紞鍡涘垂閸洖鍨?
-                }
-                // 2. 婵犵數濮烽。浠嬪焵椤掆偓閸熷潡鍩€椤掆偓缂嶅﹪骞冨Ο璇茬窞闁归偊鍘兼禒娲⒑鐎圭姵銆冮柤鍐插閹广垺鎷呴崜鑼數婵☆偆澧楃换鈧紒銊ヮ煼閺岀喖鎮滈埡鍌涚彋闂佽桨绀佺粔鑸电閿曞倹瀵犲璺哄缁辨瑩姊虹拠鍙夊攭妞ゎ偄顦甸幆宀勵敊閻愵剙顏搁梺缁樻⒒閸樠呯棯瑜旈弻娑氫沪閸撗€妲堥梺姹囧姂缁犳牠寮诲☉銏℃櫜閹煎瓨绻勯惄搴ㄦ⒑閹稿海鈯曢柛鏃€鐟╁顐㈩吋閸涱垱娈曢梺閫炲苯澧悡銈夋煕瑜庨〃鍛不閹惰姤鐓忓璺虹墕閸旀粓鎮楀顒傜Ш闁哄矉缍侀弫鎰板礃閵娿儱啸缂傚倷娴囨ご鍝ユ崲閸喍绻嗛柟缁㈠枛缁犳稒銇勯幒鍡椾壕缂佸墽铏庨崰鏍煡婢舵劕绠婚柧蹇ｅ亞閻撴垹绱撴担璇℃當妞わ箓浜堕獮澶愭偋閸喎顎撻柣鐔哥懃鐎氼噣宕欐禒瀣拺?last_step_tick闂?
-                
-                fsm_state = STEP_STATE_IDLE; 
-            }
-            // 闂備胶鍎甸崜婵堟暜閹烘绠犻煫鍥ㄦ惄濞撳鏌涚仦缁㈠殼婵炴垯鍨归悞鍨亜閹哄棗浜鹃梻鍥ь樀閹鏁愰崨顓ф殺缂備焦鍔栭〃鍛村煘閹达箑鐏抽柛鎰ゴ閸嬫捁銇愰幒鎾斥偓璺侯熆閼搁潧濮囩痪顓涘亾闂備胶鍋ㄩ崕鏉戔枍閺囥垻鍙曟い鎺嗗亾閾绘牠鏌涚仦鍙ョ繁闁绘帊绮欓弻鈩冩媴鐟欏嫬鈧劙鏌ｅ☉鍗炴珝鐎规洘顭囨禒锕傚磼濞嗗繑鐎虫繝?濠电姵顔栭崳顖滃緤妤ｅ啫钃熼柕濞炬杺閳ь剙鎳撻ˇ瑙勪繆椤愩垹鏆欓柍璇查叄楠炲洭妫冨☉姗嗘婵犵數鍋為崹鍫曞箰閸濄儳鐭撻悗娑櫳戦崣蹇涙煃閸濆嫬鈧銆?闂傚倷鐒︾€笛呯矙閹达附鍤愭い鏍ㄥ嚬閸熷懘姊洪鈧粔瀵哥矆閸℃稒鐓欐い鏍ㄧ矊椤ｇ厧鈽夐幘鍗炵伈闁?IDLE
-            else if (now - last_step_tick > STEP_MAX_INTERVAL_MS) {
-                fsm_state = STEP_STATE_IDLE;
-            }
-            break;
-    }
-
-    // 闂備胶鍎甸崜婵堟暜閹烘绠犻柟鎹愬煐瀹?缂傚倸鍊风粈渚€藝閹殿喗鏆滄俊銈呮噺閸庡鏌涘☉娆愮稇缂佲偓婢舵劖鐓忓┑鐐靛亾濞呭棗螖濡ゅ﹤鐏﹂柡灞诲妼閳藉螣缂佹ɑ瀚崇紓鍌欑劍閺屻劑鈥﹀畡閭︽綎濞寸姴顑呭洿闂佸壊鍋撶徊鎯ь啅閵忋倖鐓熼柣妯跨簿椤掔喖鏌涢妸鈺€鎲鹃柟顔哄劦閺佹劙宕奸姀銏℃緫?
-    if (now - last_step_tick > STEP_MAX_INTERVAL_MS) {
-        step_data.is_walking = false;
-        step_data.cadence    = 0;
-    }
 }

@@ -33,8 +33,12 @@ void start_sensor_task(void *pvParameters)
 
     while(1)
     {   
-        if(mode == MODE_BALL || mode == MODE_DINO || mode == MODE_PLANE) {
+        if(mode == MODE_BALL || mode == MODE_DINO || mode == MODE_PLANE ||
+           (mode == MODE_SETTING && setting_ui_is_volume_editing())) {
             imu_get_angle(&acc, &gyro, &euler_angle, 20.0f/1000.0f);
+            if (mode == MODE_SETTING) {
+                setting_ui_update_volume_tilt(euler_angle.roll);
+            }
             vTaskDelay(pdMS_TO_TICKS(20));
         }
         else if(mode == MODE_CLOCK) {

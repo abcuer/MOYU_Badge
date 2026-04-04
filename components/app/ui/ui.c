@@ -4,6 +4,143 @@
 ui_mode_e mode = MODE_CLOCK;
 ui_mode_e selected_game = MODE_BALL;
 static bool setting_wifi_reset_armed = false;
+static setting_item_t s_setting_item = SETTING_ITEM_INFO;
+typedef enum {
+    SETTING_PAGE_MENU = 0,
+    SETTING_PAGE_INFO,
+    SETTING_PAGE_VOLUME,
+    SETTING_PAGE_WIFI_RESET,
+} setting_page_t;
+static setting_page_t s_setting_page = SETTING_PAGE_MENU;
+static bool s_setting_volume_editing = false;
+static uint8_t s_setting_preview_volume = SETTINGS_DEFAULT_VOLUME;
+static int8_t s_setting_tilt_state = 0;
+
+#define SETTING_VOLUME_STEP          5
+#define SETTING_TILT_TRIGGER_DEG     12.0f
+#define SETTING_TILT_NEUTRAL_DEG     5.0f
+
+static void setting_ui_apply_preview_volume(void)
+{
+    settings_set_volume(s_setting_preview_volume);
+    audio_player_set_volume(s_setting_preview_volume);
+}
+
+void setting_ui_reset_state(void)
+{
+    setting_wifi_reset_armed = false;
+    s_setting_item = SETTING_ITEM_INFO;
+    s_setting_page = SETTING_PAGE_MENU;
+    s_setting_volume_editing = false;
+    s_setting_preview_volume = settings_get_volume();
+    s_setting_tilt_state = 0;
+}
+
+bool setting_ui_handle_short_press(void)
+{
+    if (s_setting_page != SETTING_PAGE_MENU) {
+        return true;
+    }
+
+    setting_wifi_reset_armed = false;
+    s_setting_item = (setting_item_t)((s_setting_item + 1) % 4);
+    return true;
+}
+
+bool setting_ui_handle_long_press(void)
+{
+    if (s_setting_page == SETTING_PAGE_INFO) {
+        s_setting_page = SETTING_PAGE_MENU;
+        return true;
+    }
+
+    if (s_setting_page == SETTING_PAGE_VOLUME) {
+        settings_set_volume(s_setting_preview_volume);
+        settings_save_volume();
+        audio_player_set_volume(s_setting_preview_volume);
+        s_setting_page = SETTING_PAGE_MENU;
+        s_setting_volume_editing = false;
+        s_setting_tilt_state = 0;
+        return true;
+    }
+
+    if (s_setting_page == SETTING_PAGE_WIFI_RESET) {
+        u8g2_ClearBuffer(&u8g2);
+        u8g2_SetFont(&u8g2, u8g2_font_wqy12_t_gb2312);
+        u8g2_DrawUTF8(&u8g2, 18, 28, "正在清除 Wi-Fi");
+        u8g2_DrawUTF8(&u8g2, 18, 46, "设备即将重启");
+        u8g2_SendBuffer(&u8g2);
+        erase_wifi_from_nvs();
+        esp_restart();
+        return true;
+    }
+
+    if (s_setting_item == SETTING_ITEM_INFO) {
+        s_setting_page = SETTING_PAGE_INFO;
+        return true;
+    }
+
+    if (s_setting_item == SETTING_ITEM_VOLUME) {
+        s_setting_preview_volume = settings_get_volume();
+        audio_player_set_volume(s_setting_preview_volume);
+        s_setting_page = SETTING_PAGE_VOLUME;
+        s_setting_volume_editing = true;
+        s_setting_tilt_state = 0;
+        last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        return true;
+    }
+
+    if (s_setting_item == SETTING_ITEM_WIFI_RESET) {
+        s_setting_page = SETTING_PAGE_WIFI_RESET;
+        return true;
+    }
+
+    if (s_setting_item == SETTING_ITEM_EXIT) {
+        return false;
+    }
+
+    return false;
+}
+
+bool setting_ui_is_volume_editing(void)
+{
+    return s_setting_volume_editing;
+}
+
+void setting_ui_update_volume_tilt(float roll)
+{
+    if (!s_setting_volume_editing) {
+        return;
+    }
+
+    if (fabsf(roll) <= SETTING_TILT_NEUTRAL_DEG) {
+        s_setting_tilt_state = 0;
+        return;
+    }
+
+    if (roll >= SETTING_TILT_TRIGGER_DEG) {
+        if (s_setting_tilt_state != 1) {
+            s_setting_preview_volume = (s_setting_preview_volume > (100 - SETTING_VOLUME_STEP))
+                                           ? 100
+                                           : (uint8_t)(s_setting_preview_volume + SETTING_VOLUME_STEP);
+            setting_ui_apply_preview_volume();
+            s_setting_tilt_state = 1;
+            last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        }
+        return;
+    }
+
+    if (roll <= -SETTING_TILT_TRIGGER_DEG) {
+        if (s_setting_tilt_state != -1) {
+            s_setting_preview_volume = (s_setting_preview_volume < SETTING_VOLUME_STEP)
+                                           ? 0
+                                           : (uint8_t)(s_setting_preview_volume - SETTING_VOLUME_STEP);
+            setting_ui_apply_preview_volume();
+            s_setting_tilt_state = -1;
+            last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+        }
+    }
+}
 
 void setting_ui_set_wifi_reset_armed(bool armed)
 {
@@ -232,62 +369,53 @@ void draw_radio_ui(u8g2_t *u8g2)
     const audio_station_t *station = audio_player_get_station();
     audio_state_t state = audio_player_get_state();
     uint8_t volume = audio_player_get_volume();
-    size_t station_count = audio_player_get_station_count();
-    const char *wifi_text = wifi_manager_is_connect() ? "WiFi: Connected" : "WiFi: Waiting";
-    const char *state_text = "Idle";
+    const char *wifi_text = wifi_manager_is_connect() ? "Wi-Fi 已连接" : "未连接 Wi-Fi";
+    const char *state_text = "空闲";
     uint32_t ms_now = (uint32_t)(esp_timer_get_time() / 1000);
     char info_text[32];
 
     switch (state) {
         case AUDIO_STATE_BUFFERING:
-            state_text = "Buffering";
+            state_text = "缓冲中";
             break;
         case AUDIO_STATE_PLAYING:
-            state_text = "Playing";
+            state_text = "播放中";
             break;
         case AUDIO_STATE_ERROR:
-            state_text = "Error";
+            state_text = "错误";
             break;
         case AUDIO_STATE_NO_WIFI:
-            state_text = "No Wi-Fi";
+            state_text = "未连接 Wi-Fi";
             break;
         case AUDIO_STATE_IDLE:
         default:
-            state_text = "Idle";
+            state_text = "空闲";
             break;
     }
 
     u8g2_ClearBuffer(u8g2);
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(u8g2, 36, 10, "NET RADIO");
+    u8g2_SetFont(u8g2, u8g2_font_wqy12_t_gb2312);
+    u8g2_DrawUTF8(u8g2, 28, 11, "网络电台");
     u8g2_DrawHLine(u8g2, 0, 12, 128);
 
-    u8g2_DrawStr(u8g2, 2, 24, wifi_text);
-    u8g2_DrawStr(u8g2, 2, 36, state_text);
-    snprintf(info_text, sizeof(info_text), "VOL:%u%% CH:%u", volume, (unsigned)station_count);
-    u8g2_DrawStr(u8g2, 52, 36, info_text);
+    u8g2_DrawUTF8(u8g2, 2, 24, wifi_text);
+    u8g2_DrawUTF8(u8g2, 2, 36, state_text);
+    snprintf(info_text, sizeof(info_text), "音量:%u%%", volume);
+    u8g2_DrawUTF8(u8g2, 62, 36, info_text);
 
-    // Long station names are clipped into a narrow window and scrolled horizontally.
     u8g2_DrawFrame(u8g2, 2, 40, 124, 12);
     u8g2_SetClipWindow(u8g2, 4, 40, 124, 52);
-    int text_w = u8g2_GetStrWidth(u8g2, station->name);
+    int text_w = u8g2_GetUTF8Width(u8g2, station->name);
     int scroll_x = 6;
     if (text_w > 116) {
         scroll_x = 6 - ((ms_now / 120) % (text_w + 16));
     }
-    u8g2_DrawStr(u8g2, scroll_x, 49, station->name);
+    u8g2_DrawUTF8(u8g2, scroll_x, 49, station->name);
     u8g2_SetMaxClipWindow(u8g2);
 
-    if (state == AUDIO_STATE_BUFFERING || state == AUDIO_STATE_PLAYING) {
-        // Lightweight activity bar so the page still feels alive on a tiny OLED.
-        int bar_w = (ms_now / 80) % 96;
-        u8g2_DrawFrame(u8g2, 16, 27, 96, 7);
-        u8g2_DrawBox(u8g2, 16, 27, bar_w, 7);
-    }
-
     u8g2_DrawHLine(u8g2, 0, 55, 128);
-    u8g2_DrawStr(u8g2, 2, 63, "SHORT NEXT");
-    u8g2_DrawStr(u8g2, 76, 63, "LONG MENU");
+    u8g2_DrawUTF8(u8g2, 2, 63, "短按切台");
+    u8g2_DrawUTF8(u8g2, 74, 63, "长按菜单");
     u8g2_SendBuffer(u8g2);
 }
 
@@ -856,69 +984,8 @@ void draw_blood_ui(u8g2_t *u8g2)
 
 void draw_setting_ui(u8g2_t *u8g2)
 {
-    u8g2_ClearBuffer(u8g2);
-
-    // 鑾峰彇绯荤粺姣鏃堕棿
-    uint32_t ms_now = esp_timer_get_time() / 1000; 
-
-    // 鈹€鈹€ 1. 椤堕儴锛? SYSTEM INFO - 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-    // 浣跨敤浼橀泤鐨?6x12 瀛椾綋
-    u8g2_SetFont(u8g2, u8g2_font_6x12_tf); 
-    u8g2_DrawStr(u8g2, 16, 10, "- SYSTEM INFO -");
-    u8g2_DrawHLine(u8g2, 0, 12, 128);
-
-    // 鈹€鈹€ 2. 涓棿锛氫俊鎭睍绀哄尯 (鍥炬爣+鏂囧瓧缁勫悎) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-    
-    // --- Bilibili 琛?---
-    // 閫夌敤 12x12 鐨勫浘鏍囧簱 (2x 浠ｈ〃 16x16锛?x 浠ｈ〃 8x8锛岃繖閲岄€?1x 骞跺井璋?
-    u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_1x_t); 
-    // 缁樺埗灏忕數瑙?灞忓箷鍥炬爣 (浠ｇ爜 64+19)
-    u8g2_DrawGlyph(u8g2, 2, 26, 64 + 19); 
-
-    // 鍒囨崲鍥炴爣鍑嗘竻鏅板瓧浣?
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf); 
-    u8g2_DrawStr(u8g2, 14, 26, "Bili  : FASQwQ"); // 浣跨敤缂╁啓
-
-    // --- Github 琛?---
-    u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_1x_t); 
-    // 缁樺埗涓€涓被浼?Git 鍒嗘敮/浠ｇ爜/绔犻奔鐚ご閮ㄧ殑鍥炬爣 (浠ｇ爜 64+2 绫讳技灏忓ご锛屾垨鑰?64+4 绫讳技 Git 绗﹀彿)
-    // 杩欓噷閫夌敤 64+4锛屽畠鏄竴涓?Git 鍒嗘敮绗﹀彿锛岄潪甯哥‖鏍?
-    u8g2_DrawGlyph(u8g2, 2, 40, 64 + 4); 
-
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(u8g2, 14, 40, "Github:"); // 寰€涓嬫尓涓€鐐癸紝淇濇寔闂磋窛
-
-    // 鈹€鈹€ 3. Github 闀挎枃鏈粴鍔ㄥ尯鍩?(瑁佸壀绐楀彛) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-    const char *github_link = "github.com/abcuer";
-    int github_x_start = 56; // 璧峰 X 鍧愭爣寰皟瀵归綈鏂囧瓧
-    int github_width = 128 - github_x_start - 2; 
-
-    // 璁剧疆 U8G2 瑁佸壀绐楀彛
-    u8g2_SetMaxClipWindow(u8g2); 
-    u8g2_SetClipWindow(u8g2, github_x_start, 30, 128 - 2, 42); 
-
-    int text_len = u8g2_GetStrWidth(u8g2, github_link);
-    int scroll_offset = (ms_now / 30) % (text_len + github_width); 
-    int cur_x = (github_x_start + github_width) - scroll_offset;
-
-    u8g2_DrawStr(u8g2, cur_x, 40, github_link);
-    u8g2_SetMaxClipWindow(u8g2); // 鎭㈠鍏ㄥ睆鐢诲竷
-
-    u8g2_DrawHLine(u8g2, 0, 44, 128); // 搴曢儴绾跨◢寰線涓婃彁
-
-    u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-    u8g2_DrawStr(u8g2, 2, 52, "WiFi Reset");
-    if (setting_wifi_reset_armed) {
-        u8g2_DrawBox(u8g2, 56, 46, 70, 9);
-        u8g2_SetDrawColor(u8g2, 0);
-        u8g2_DrawStr(u8g2, 60, 52, "ARMED LONG OK");
-        u8g2_SetDrawColor(u8g2, 1);
-    } else {
-        u8g2_DrawFrame(u8g2, 56, 46, 70, 9);
-        u8g2_DrawStr(u8g2, 60, 52, "SHORT TO ARM");
-    }
-
-    // 鈹€鈹€ 4. 搴曢儴锛氬姳蹇楄 (3绉掍竴鍒囨崲) 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+    char buf[24];
+    uint32_t ms_now = (uint32_t)(esp_timer_get_time() / 1000);
     static const char *motto[] = {
         "Keep On Loving",
         "World Peace",
@@ -930,13 +997,123 @@ void draw_setting_ui(u8g2_t *u8g2)
         "Peace & Love",
         "No reset, no regret"
     };
-    int motto_count = sizeof(motto) / sizeof(motto[0]);
-    int motto_idx = (ms_now / 3000) % motto_count; 
-    int motto_w = u8g2_GetStrWidth(u8g2, motto[motto_idx]);
-    
-    // 灞呬腑鏄剧ず鍦ㄦ渶搴曢儴
-    u8g2_DrawStr(u8g2, (128 - motto_w) / 2, 63, motto[motto_idx]);
+
+    u8g2_ClearBuffer(u8g2);
+
+    if (s_setting_page == SETTING_PAGE_INFO) {
+        const char *github_link = "github.com/abcuer";
+        int motto_idx = (ms_now / 3000) % (sizeof(motto) / sizeof(motto[0]));
+        int motto_w;
+        int github_x_start = 56;
+        int github_width = 128 - github_x_start - 2;
+        int text_len;
+        int scroll_offset;
+        int cur_x;
+
+        u8g2_SetFont(u8g2, u8g2_font_6x12_tf);
+        u8g2_DrawStr(u8g2, 16, 10, "- SYSTEM INFO -");
+        u8g2_DrawHLine(u8g2, 0, 12, 128);
+
+        u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_1x_t);
+        u8g2_DrawGlyph(u8g2, 2, 26, 64 + 19);
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+        u8g2_DrawStr(u8g2, 14, 26, "Bili  : FASQwQ");
+
+        u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_1x_t);
+        u8g2_DrawGlyph(u8g2, 2, 40, 64 + 4);
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+        u8g2_DrawStr(u8g2, 14, 40, "Github:");
+
+        u8g2_SetMaxClipWindow(u8g2);
+        u8g2_SetClipWindow(u8g2, github_x_start, 30, 126, 42);
+        text_len = u8g2_GetStrWidth(u8g2, github_link);
+        scroll_offset = (ms_now / 30) % (text_len + github_width);
+        cur_x = (github_x_start + github_width) - scroll_offset;
+        u8g2_DrawStr(u8g2, cur_x, 40, github_link);
+        u8g2_SetMaxClipWindow(u8g2);
+
+        u8g2_DrawHLine(u8g2, 0, 44, 128);
+        u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+        motto_w = u8g2_GetStrWidth(u8g2, motto[motto_idx]);
+        u8g2_DrawStr(u8g2, (128 - motto_w) / 2, 59, motto[motto_idx]);
+        u8g2_SendBuffer(u8g2);
+        return;
+    }
+
+    if (s_setting_page == SETTING_PAGE_VOLUME) {
+        u8g2_SetFont(u8g2, u8g2_font_wqy12_t_gb2312);
+        u8g2_DrawUTF8(u8g2, 28, 11, "音量调节");
+        u8g2_DrawHLine(u8g2, 0, 12, 128);
+        u8g2_DrawTriangle(u8g2, 18, 33, 28, 27, 28, 39);
+        u8g2_DrawTriangle(u8g2, 110, 33, 100, 27, 100, 39);
+        snprintf(buf, sizeof(buf), "%u%%", s_setting_preview_volume);
+        u8g2_SetFont(u8g2, u8g2_font_logisoso16_tn);
+        u8g2_DrawStr(u8g2, 32, 39, buf);
+        u8g2_SetFont(u8g2, u8g2_font_wqy12_t_gb2312);
+        u8g2_DrawUTF8(u8g2, 8, 54, "左减 右加 回正再触发");
+        u8g2_DrawHLine(u8g2, 0, 55, 128);
+        u8g2_DrawUTF8(u8g2, 20, 63, "长按保存并返回");
+        u8g2_SendBuffer(u8g2);
+        return;
+    }
+
+    if (s_setting_page == SETTING_PAGE_WIFI_RESET) {
+        u8g2_SetFont(u8g2, u8g2_font_wqy12_t_gb2312);
+        u8g2_DrawUTF8(u8g2, 28, 11, "重置 Wi-Fi");
+        u8g2_DrawHLine(u8g2, 0, 12, 128);
+        u8g2_DrawUTF8(u8g2, 10, 28, "将清除已保存网络");
+        u8g2_DrawUTF8(u8g2, 16, 42, "长按立即执行重置");
+        u8g2_DrawHLine(u8g2, 0, 55, 128);
+        u8g2_DrawUTF8(u8g2, 22, 63, "重启后重新配网");
+        u8g2_SendBuffer(u8g2);
+        return;
+    }
+
+    u8g2_SetFont(u8g2, u8g2_font_6x12_tf);
+    u8g2_DrawStr(u8g2, 16, 10, "- SYSTEM SET -");
+    u8g2_DrawHLine(u8g2, 0, 12, 128);
+
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
+    if (s_setting_item == SETTING_ITEM_INFO) {
+        u8g2_DrawBox(u8g2, 2, 16, 124, 11);
+        u8g2_SetDrawColor(u8g2, 0);
+        u8g2_DrawStr(u8g2, 6, 25, "System Info");
+        u8g2_SetDrawColor(u8g2, 1);
+    } else {
+        u8g2_DrawFrame(u8g2, 2, 16, 124, 11);
+        u8g2_DrawStr(u8g2, 6, 25, "System Info");
+    }
+
+    snprintf(buf, sizeof(buf), "Volume: %u%%", settings_get_volume());
+    if (s_setting_item == SETTING_ITEM_VOLUME) {
+        u8g2_DrawBox(u8g2, 2, 29, 124, 11);
+        u8g2_SetDrawColor(u8g2, 0);
+        u8g2_DrawStr(u8g2, 6, 38, buf);
+        u8g2_SetDrawColor(u8g2, 1);
+    } else {
+        u8g2_DrawFrame(u8g2, 2, 29, 124, 11);
+        u8g2_DrawStr(u8g2, 6, 38, buf);
+    }
+
+    if (s_setting_item == SETTING_ITEM_WIFI_RESET) {
+        u8g2_DrawBox(u8g2, 2, 42, 124, 11);
+        u8g2_SetDrawColor(u8g2, 0);
+        u8g2_DrawStr(u8g2, 6, 51, "Reset WiFi");
+        u8g2_SetDrawColor(u8g2, 1);
+    } else {
+        u8g2_DrawFrame(u8g2, 2, 42, 124, 11);
+        u8g2_DrawStr(u8g2, 6, 51, "Reset WiFi");
+    }
+
+    if (s_setting_item == SETTING_ITEM_EXIT) {
+        u8g2_DrawBox(u8g2, 2, 55, 124, 9);
+        u8g2_SetDrawColor(u8g2, 0);
+        u8g2_DrawStr(u8g2, 6, 63, "Exit");
+        u8g2_SetDrawColor(u8g2, 1);
+    } else {
+        u8g2_DrawFrame(u8g2, 2, 55, 124, 9);
+        u8g2_DrawStr(u8g2, 6, 63, "Exit");
+    }
 
     u8g2_SendBuffer(u8g2);
 }
-

@@ -37,6 +37,13 @@ typedef struct {
     uint16_t icon_code;
 } game_info_t;
 
+typedef enum {
+    SETTING_ITEM_INFO = 0,
+    SETTING_ITEM_VOLUME,
+    SETTING_ITEM_WIFI_RESET,
+    SETTING_ITEM_EXIT,
+} setting_item_t;
+
 typedef struct {
     int x;
     int y;
@@ -123,6 +130,11 @@ void air_game_reset(AirGame_t *game);
 void draw_blood_ui(u8g2_t *u8g2);
 void reset_blood_ui_timer(void);
 void draw_setting_ui(u8g2_t *u8g2);
+void setting_ui_reset_state(void);
+bool setting_ui_handle_short_press(void);
+bool setting_ui_handle_long_press(void);
+bool setting_ui_is_volume_editing(void);
+void setting_ui_update_volume_tilt(float roll);
 void setting_ui_set_wifi_reset_armed(bool armed);
 bool setting_ui_is_wifi_reset_armed(void);
 void setting_ui_toggle_wifi_reset_armed(void);
