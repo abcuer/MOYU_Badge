@@ -8,5 +8,6 @@
 
 void ws2812_init(void);
 void ws2812_flash(uint8_t r, uint8_t g, uint8_t b);
+void ws2812_off(void);
 
 #endif /* __WS2812_H */

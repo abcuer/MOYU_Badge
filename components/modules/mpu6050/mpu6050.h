@@ -26,17 +26,21 @@ typedef struct{
 }Gyro_Struct;
 
 typedef struct{
+   Acc_Struct acc;
+   Gyro_Struct gyro;
+}GyroAccel_Struct;
+
+typedef struct{
     float pitch;
     float roll;
     float yaw;
-}EulerAngle_struct;
+}EulerAngle_Struct;
 
 void mpu6050_init(void);
-void mpu_get_data(Acc_Struct *acc, Gyro_Struct *gyro);
+void mpu_get_data(GyroAccel_Struct *gyroAccel);
 void mpu6050_sleep(bool enable);
 
-extern Acc_Struct acc;
-extern Gyro_Struct gyro;
-extern EulerAngle_struct euler_angle;
+extern GyroAccel_Struct gyroAccel;
+extern EulerAngle_Struct euler_angle;
 
 #endif 

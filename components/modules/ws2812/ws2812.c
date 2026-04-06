@@ -39,3 +39,12 @@ void ws2812_flash(uint8_t r, uint8_t g, uint8_t b)
     }
     ESP_ERROR_CHECK(led_strip_refresh(led_strip));
 }
+
+void ws2812_off(void)
+{
+    if (led_strip == NULL) {
+        return;
+    }
+
+    ESP_ERROR_CHECK(led_strip_clear(led_strip));
+}

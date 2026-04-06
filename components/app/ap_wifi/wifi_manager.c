@@ -22,7 +22,7 @@ static esp_netif_t *esp_netif_sta = NULL;
 static esp_netif_t *esp_netif_ap = NULL;
 
 //AP模式下的SSID名称
-static const char* ap_ssid_name = "ESP32-AP";
+static const char* ap_ssid_name = "MoYu_Badge";
 
 //AP模式下的密码
 static const char* ap_password = "12345678";
@@ -266,4 +266,14 @@ esp_err_t wifi_manager_connect(const char* ssid,const char* password)
 bool wifi_manager_is_connect(void)
 {
     return is_sta_connected;
+}
+
+const char *wifi_manager_get_ap_ssid(void)
+{
+    return ap_ssid_name;
+}
+
+const char *wifi_manager_get_ap_password(void)
+{
+    return ap_password;
 }

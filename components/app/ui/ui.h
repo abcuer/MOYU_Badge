@@ -8,9 +8,9 @@
 
 typedef enum {
     MODE_CLOCK = 0,
-    MODE_BLOOD,
     MODE_GAME_SELECT,
-    MODE_RADIO,
+    MODE_RADIO, 
+    MODE_BLOOD,
     MODE_SETTING,
     MODE_BALL,
     MODE_DINO,
@@ -119,6 +119,7 @@ typedef struct {
 } AirGame_t;
 
 void draw_syncing_ui(u8g2_t *u8g2);
+void reset_sync_ui_timer(void);
 void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected);
 void draw_main_clock_ui(u8g2_t *u8g2);
 void draw_radio_ui(u8g2_t *u8g2);
@@ -138,6 +139,10 @@ void setting_ui_update_volume_tilt(float roll);
 void setting_ui_set_wifi_reset_armed(bool armed);
 bool setting_ui_is_wifi_reset_armed(void);
 void setting_ui_toggle_wifi_reset_armed(void);
+bool radio_ui_is_volume_editing(void);
+void radio_ui_toggle_volume_edit(void);
+void radio_ui_exit_volume_edit(bool save);
+void radio_ui_update_volume_tilt(float roll);
 
 extern int menu_layer;
 extern ui_mode_e mode;

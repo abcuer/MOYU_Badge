@@ -9,12 +9,12 @@
 extern "C" {
 #endif
 
-#define KEY_NUM 1 
-#define USER_KEY_PIN    3 
+#define KEY_NUM 1
+#define USER_KEY_PIN 3
 
-// 触发阈值定义（单位：ms）
-#define KEY_DEBOUNCE_MS    20    // 消抖时间
-#define KEY_LONG_PRESS_MS  1000  // 超过1.0秒判定为长按
+#define KEY_DEBOUNCE_MS 20
+#define KEY_LONG_PRESS_MS 1000
+#define KEY_SUPER_LONG_PRESS_MS 2000
 
 typedef enum {
     KEY_USER = 0,
@@ -22,14 +22,15 @@ typedef enum {
 
 typedef enum {
     KEY_EVENT_NONE = 0,
-    KEY_EVENT_SHORT,    // 单击（弹起时触发）
-    KEY_EVENT_LONG,     // 长按（达到时间立即触发或弹起触发，本示例采用达到时间触发）
+    KEY_EVENT_SHORT,
+    KEY_EVENT_LONG,
+    KEY_EVENT_SUPER_LONG,
 } key_event_e;
 
 typedef enum {
-    KEY_IDLE = 0,       // 空闲
-    KEY_CONFIRM,        // 确认消抖
-    KEY_PRESSING,       // 正在按下
+    KEY_IDLE = 0,
+    KEY_CONFIRM,
+    KEY_PRESSING,
 } key_fsm_e;
 
 typedef struct {
@@ -38,13 +39,14 @@ typedef struct {
 } key_static_param_s;
 
 typedef struct {
-    key_fsm_e state;      // 状态机当前状态
-    uint32_t last_tick;   // 记录进入状态的时间点
-    bool long_triggered;  // 长按是否已触发标志位，防止重复触发
+    key_fsm_e state;
+    uint32_t last_tick;
+    bool long_triggered;
+    bool super_long_triggered;
 } key_running_param_s;
 
 typedef struct {
-    key_static_param_s  static_param;
+    key_static_param_s static_param;
     key_running_param_s running_param;
 } key_instance_s;
 

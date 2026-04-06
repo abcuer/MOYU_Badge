@@ -8,6 +8,7 @@
 #include "mqtt_client.h"
 #include "onenet_token.h"
 #include "onenet_dm.h"
+#include "ota.h"
 
 #define TAG     "onenet_mqtt"
 
@@ -77,11 +78,27 @@ static void onenet_mqtt_event_handler(void* event_handler_arg,
             }
             else if(strstr(event->topic,"/ota/inform"))
             {
-                cJSON *ota_js = cJSON_Parse(event->data);
-                cJSON *id_js = cJSON_GetObjectItem(ota_js,"id");
-                onenet_ota_ack(cJSON_GetStringValue(id_js),200,"success");
-                cJSON_Delete(ota_js);
-                // onenet_ota_start();
+                cJSON *ota_js = cJSON_ParseWithLength(event->data, event->data_len);
+                const char *ota_id = "ota";
+                int ack_code = 200;
+                const char *ack_msg = "success";
+
+                if (ota_js != NULL) {
+                    cJSON *id_js = cJSON_GetObjectItem(ota_js, "id");
+                    if (cJSON_IsString(id_js) && id_js->valuestring != NULL) {
+                        ota_id = id_js->valuestring;
+                    }
+
+                    esp_err_t ota_err = ota_start_from_onenet_payload(event->data, event->data_len);
+                    if (ota_err != ESP_OK) {
+                        ack_code = 500;
+                        ack_msg = "ota start failed";
+                    }
+                    onenet_ota_ack(ota_id, ack_code, ack_msg);
+                    cJSON_Delete(ota_js);
+                } else {
+                    onenet_ota_ack(ota_id, 400, "invalid ota payload");
+                }
             }
             break;
         case MQTT_EVENT_ERROR:

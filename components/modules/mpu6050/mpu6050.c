@@ -2,9 +2,8 @@
 #include "bsp_delay.h"
 #include "driver/i2c_master.h"
 
-Acc_Struct acc;
-Gyro_Struct gyro;
-EulerAngle_struct euler_angle;
+GyroAccel_Struct gyroAccel;
+EulerAngle_Struct euler_angle;
 
 static i2c_master_bus_handle_t bus_handle;
 static i2c_master_dev_handle_t mpu6050_handle;
@@ -122,18 +121,18 @@ void mpu6050_init(void)
 /**
  * @brief 获取校准后的数据
  */
-void mpu_get_data(Acc_Struct *acc, Gyro_Struct *gyro)
+void mpu_get_data(GyroAccel_Struct *gyroAccel)
 {
-    mpu_read_raw_data(acc, gyro); // 先读原始数据
+    mpu_read_raw_data(&gyroAccel->acc, &gyroAccel->gyro); // 先读原始数据
 
     // 减去零偏
-    acc->x -= acc_offsets.x;
-    acc->y -= acc_offsets.y;
-    acc->z -= acc_offsets.z;
+    gyroAccel->acc.x -= acc_offsets.x;
+    gyroAccel->acc.y -= acc_offsets.y;
+    gyroAccel->acc.z -= acc_offsets.z;
 
-    gyro->x -= gyro_offsets.x;
-    gyro->y -= gyro_offsets.y;
-    gyro->z -= gyro_offsets.z;
+    gyroAccel->gyro.x -= gyro_offsets.x;
+    gyroAccel->gyro.y -= gyro_offsets.y;
+    gyroAccel->gyro.z -= gyro_offsets.z;
 }
 
 void mpu6050_sleep(bool enable)

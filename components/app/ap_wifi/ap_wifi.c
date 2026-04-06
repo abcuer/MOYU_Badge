@@ -1,10 +1,14 @@
-#include "string.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include <sys/stat.h>
+
 #include "ap_wifi.h"
 #include "ws_server.h"
 #include "nvs_flash.h"
 #include "cJSON.h"
 #include "esp_spiffs.h"
-#include "sys/stat.h"
 #include "esp_log.h"
 #include "user_task.h"
 
@@ -12,227 +16,385 @@
 #include "freertos/task.h"
 #include "freertos/event_groups.h"
 
-#define TAG     "apcfg"
+#include "lwip/sockets.h"
+#include "lwip/inet.h"
+#include "lwip/netdb.h"
 
-//html网页在spiffs文件系统中的路径
+#include "ui.h"
+
+#define TAG "apcfg"
 #define INDEX_HTML_PATH "/spiffs/apcfg.html"
+#define APCFG_BIT BIT0
+#define DNS_PORT 53
+#define DNS_MAX_PACKET_SIZE 512
+#define SAVED_WIFI_CONNECT_TIMEOUT_MS 40000
 
-//html网页缓存
-static char* index_html = NULL;
-
-//配网事件
-static EventGroupHandle_t   apcfg_event = NULL;
-
-//接收到ap配网的ssid和密码
+static char *index_html = NULL;
+static EventGroupHandle_t apcfg_event = NULL;
 static char current_ssid[32];
 static char current_password[64];
 
-#define APCFG_BIT   (BIT0)
+static TaskHandle_t s_dns_task_handle = NULL;
+static TaskHandle_t s_saved_wifi_timeout_task = NULL;
+static int s_dns_sock = -1;
+static volatile bool s_dns_running = false;
+static volatile bool s_ap_config_active = false;
+static volatile bool s_saved_wifi_connected = false;
 
-/** 从spiffs中加载html页面到内存
- * @param 无
- * @return 无 
-*/
-static char* initi_web_page_buffer(void)
+static const uint8_t s_ap_ip[4] = {192, 168, 100, 1};
+
+static char *initi_web_page_buffer(void);
+static void wifi_scan_finish_handle(int numbers, wifi_ap_record_t *ap_records);
+static void ws_receive_handle(uint8_t *payload, int len);
+static void ap_wifi_task(void *param);
+static void captive_dns_start(void);
+static void captive_dns_stop(void);
+static void captive_dns_task(void *param);
+static int captive_dns_question_len(const uint8_t *packet, int len);
+static int captive_dns_build_response(const uint8_t *request, int request_len,
+                                      uint8_t *response, int response_cap);
+static void saved_wifi_timeout_task(void *param);
+
+static char *initi_web_page_buffer(void)
 {
-    //定义挂载点
     esp_vfs_spiffs_conf_t conf = {
-        .base_path = "/spiffs",            //挂载点
-        .partition_label = "html",         //分区名称
-        .max_files = 5,                    //最大打开的文件数
-        .format_if_mount_failed = false    //挂载失败是否执行格式化
-        };
-    //挂载spiffs
+        .base_path = "/spiffs",
+        .partition_label = "html",
+        .max_files = 5,
+        .format_if_mount_failed = false,
+    };
+
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&conf));
-    //查找文件是否存在
+
     struct stat st;
-    if (stat(INDEX_HTML_PATH, &st))
-    {
+    if (stat(INDEX_HTML_PATH, &st) != 0) {
         ESP_LOGE(TAG, "apcfg.html not found");
         return NULL;
     }
-    //打开html文件并且读取到内存中
-    char* page = (char*)malloc(st.st_size + 1);
-    if(!page)
-    {
+
+    char *page = (char *)malloc(st.st_size + 1);
+    if (page == NULL) {
         return NULL;
     }
-    memset(page,0,st.st_size + 1);
+
+    memset(page, 0, st.st_size + 1);
     FILE *fp = fopen(INDEX_HTML_PATH, "r");
-    if (fread(page, st.st_size, 1, fp) == 0)
-    {
+    if (fp == NULL) {
         free(page);
-        page = NULL;
-        ESP_LOGE(TAG, "fread failed");
+        return NULL;
     }
+
+    if (fread(page, st.st_size, 1, fp) == 0) {
+        free(page);
+        fclose(fp);
+        ESP_LOGE(TAG, "fread failed");
+        return NULL;
+    }
+
     fclose(fp);
     return page;
 }
 
-/** wifi扫描完成
- * @param numbers 扫描到的ap个数
- * @param ap_records ap信息
- * @return 无 
-*/
-static void wifi_scan_finish_handle(int numbers,wifi_ap_record_t *ap_records)
+static void wifi_scan_finish_handle(int numbers, wifi_ap_record_t *ap_records)
 {
-    cJSON* root = cJSON_CreateObject();
-    cJSON* wifilist_js = cJSON_AddArrayToObject(root,"wifi_list");
-    for(int i = 0;i < numbers;i++)
-    {
-        cJSON* wifi_js = cJSON_CreateObject();
-        cJSON_AddStringToObject(wifi_js,"ssid",(char*)ap_records[i].ssid);
-        cJSON_AddNumberToObject(wifi_js,"rssi",ap_records[i].rssi);
-        if(ap_records[i].authmode == WIFI_AUTH_OPEN)
-            cJSON_AddBoolToObject(wifi_js,"encrypted",0);
-        else
-            cJSON_AddBoolToObject(wifi_js,"encrypted",1);
-        cJSON_AddItemToArray(wifilist_js,wifi_js);
+    cJSON *root = cJSON_CreateObject();
+    cJSON *wifilist_js = cJSON_AddArrayToObject(root, "wifi_list");
+
+    for (int i = 0; i < numbers; i++) {
+        cJSON *wifi_js = cJSON_CreateObject();
+        cJSON_AddStringToObject(wifi_js, "ssid", (char *)ap_records[i].ssid);
+        cJSON_AddNumberToObject(wifi_js, "rssi", ap_records[i].rssi);
+        cJSON_AddBoolToObject(wifi_js, "encrypted", ap_records[i].authmode != WIFI_AUTH_OPEN);
+        cJSON_AddItemToArray(wifilist_js, wifi_js);
     }
-    char* data = cJSON_Print(root);
-    ESP_LOGI(TAG,"WS send:%s",data);
-    web_ws_send((uint8_t*)data,strlen(data));
+
+    char *data = cJSON_Print(root);
+    ESP_LOGI(TAG, "WS send:%s", data);
+    web_ws_send((uint8_t *)data, strlen(data));
     cJSON_free(data);
     cJSON_Delete(root);
 }
 
-/** ws接收回调函数
- * @param payload 数据
- * @param len 数据长度
- * @return 无 
-*/
-static void ws_receive_handle(uint8_t* payload,int len)
+static void ws_receive_handle(uint8_t *payload, int len)
 {
-    cJSON* root = cJSON_Parse((char*)payload);
-    if(root)
-    {
-        cJSON* scan_js = cJSON_GetObjectItem(root,"scan");
-        cJSON* ssid_js = cJSON_GetObjectItem(root,"ssid");
-        cJSON* password_js = cJSON_GetObjectItem(root,"password");
-        if(scan_js)
-        {
-            char* scan_value = cJSON_GetStringValue(scan_js);
-            if(strcmp(scan_value,"start") == 0)
-            {
-                wifi_manager_scan(wifi_scan_finish_handle);
-            }
-        }
-        if(ssid_js && password_js)
-        {
-            char* ssid = cJSON_GetStringValue(ssid_js);
-            char* password = cJSON_GetStringValue(password_js);
-            snprintf(current_ssid,sizeof(current_ssid),"%s",ssid);
-            snprintf(current_password,sizeof(current_password),"%s",password);
-            save_wifi_to_nvs(ssid, password); 
-            ESP_LOGI(TAG,"Receive ssid:%s,password:%s,now stop http server",current_ssid,current_password);
-            //此回调函数里面由websocket底层调用，不宜直接调用关闭服务器操作
-            xEventGroupSetBits(apcfg_event,APCFG_BIT);  
+    cJSON *root = cJSON_Parse((char *)payload);
+    (void)len;
+
+    if (root == NULL) {
+        ESP_LOGE(TAG, "Receive invalid json");
+        return;
+    }
+
+    cJSON *scan_js = cJSON_GetObjectItem(root, "scan");
+    cJSON *ssid_js = cJSON_GetObjectItem(root, "ssid");
+    cJSON *password_js = cJSON_GetObjectItem(root, "password");
+
+    if (scan_js != NULL) {
+        char *scan_value = cJSON_GetStringValue(scan_js);
+        if (scan_value != NULL && strcmp(scan_value, "start") == 0) {
+            wifi_manager_scan(wifi_scan_finish_handle);
         }
     }
-    else
-    {
-        ESP_LOGE(TAG,"Receive invaild json");
+
+    if (ssid_js != NULL && password_js != NULL) {
+        char *ssid = cJSON_GetStringValue(ssid_js);
+        char *password = cJSON_GetStringValue(password_js);
+        if (ssid != NULL && password != NULL) {
+            snprintf(current_ssid, sizeof(current_ssid), "%s", ssid);
+            snprintf(current_password, sizeof(current_password), "%s", password);
+            save_wifi_to_nvs(ssid, password);
+            reset_sync_ui_timer();
+            ESP_LOGI(TAG, "Receive ssid:%s,password:%s,now stop http server", current_ssid, current_password);
+            xEventGroupSetBits(apcfg_event, APCFG_BIT);
+        }
+    }
+
+    cJSON_Delete(root);
+}
+
+static int captive_dns_question_len(const uint8_t *packet, int len)
+{
+    int pos = 12;
+
+    if (len <= 12) {
+        return -1;
+    }
+
+    while (pos < len && packet[pos] != 0) {
+        int label_len = packet[pos];
+        pos += label_len + 1;
+    }
+
+    if ((pos + 5) > len) {
+        return -1;
+    }
+
+    return (pos + 1 + 4) - 12;
+}
+
+static int captive_dns_build_response(const uint8_t *request, int request_len,
+                                      uint8_t *response, int response_cap)
+{
+    int question_len = captive_dns_question_len(request, request_len);
+    int answer_pos;
+
+    if (question_len < 0 || response_cap < (12 + question_len + 16)) {
+        return -1;
+    }
+
+    memset(response, 0, response_cap);
+    memcpy(response, request, 2);
+    response[2] = 0x81;
+    response[3] = 0x80;
+    response[4] = 0x00;
+    response[5] = 0x01;
+    response[6] = 0x00;
+    response[7] = 0x01;
+
+    memcpy(response + 12, request + 12, question_len);
+    answer_pos = 12 + question_len;
+
+    response[answer_pos++] = 0xC0;
+    response[answer_pos++] = 0x0C;
+    response[answer_pos++] = 0x00;
+    response[answer_pos++] = 0x01;
+    response[answer_pos++] = 0x00;
+    response[answer_pos++] = 0x01;
+    response[answer_pos++] = 0x00;
+    response[answer_pos++] = 0x00;
+    response[answer_pos++] = 0x00;
+    response[answer_pos++] = 0x3C;
+    response[answer_pos++] = 0x00;
+    response[answer_pos++] = 0x04;
+    memcpy(response + answer_pos, s_ap_ip, sizeof(s_ap_ip));
+    answer_pos += sizeof(s_ap_ip);
+
+    return answer_pos;
+}
+
+static void captive_dns_task(void *param)
+{
+    (void)param;
+
+    uint8_t rx_buf[DNS_MAX_PACKET_SIZE];
+    uint8_t tx_buf[DNS_MAX_PACKET_SIZE];
+
+    while (s_dns_running) {
+        struct sockaddr_in from_addr;
+        socklen_t from_len = sizeof(from_addr);
+        int len = recvfrom(s_dns_sock, rx_buf, sizeof(rx_buf), 0, (struct sockaddr *)&from_addr, &from_len);
+        if (len <= 0) {
+            continue;
+        }
+
+        int tx_len = captive_dns_build_response(rx_buf, len, tx_buf, sizeof(tx_buf));
+        if (tx_len > 0) {
+            sendto(s_dns_sock, tx_buf, tx_len, 0, (struct sockaddr *)&from_addr, from_len);
+        }
+    }
+
+    s_dns_task_handle = NULL;
+    vTaskDelete(NULL);
+}
+
+static void captive_dns_start(void)
+{
+    if (s_dns_task_handle != NULL) {
+        return;
+    }
+
+    s_dns_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (s_dns_sock < 0) {
+        ESP_LOGE(TAG, "create dns socket failed");
+        return;
+    }
+
+    struct sockaddr_in bind_addr = {
+        .sin_family = AF_INET,
+        .sin_port = htons(DNS_PORT),
+        .sin_addr.s_addr = htonl(INADDR_ANY),
+    };
+
+    if (bind(s_dns_sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) != 0) {
+        ESP_LOGE(TAG, "bind dns socket failed");
+        closesocket(s_dns_sock);
+        s_dns_sock = -1;
+        return;
+    }
+
+    struct timeval timeout = {
+        .tv_sec = 1,
+        .tv_usec = 0,
+    };
+    setsockopt(s_dns_sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    s_dns_running = true;
+    xTaskCreatePinnedToCore(captive_dns_task, "captive_dns", 4096, NULL, 3, &s_dns_task_handle, 0);
+}
+
+static void captive_dns_stop(void)
+{
+    if (s_dns_task_handle == NULL) {
+        return;
+    }
+
+    s_dns_running = false;
+
+    if (s_dns_sock >= 0) {
+        closesocket(s_dns_sock);
+        s_dns_sock = -1;
+    }
+
+    while (s_dns_task_handle != NULL) {
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
-static void ap_wifi_task(void* param)
+static void ap_wifi_task(void *param)
 {
-    EventBits_t ev;
-    while(1)
-    {
-        ev = xEventGroupWaitBits(apcfg_event,APCFG_BIT,pdTRUE,pdFALSE,pdMS_TO_TICKS(10*1000));
-        if(ev &APCFG_BIT)
-        {
+    (void)param;
+
+    while (1) {
+        EventBits_t ev = xEventGroupWaitBits(apcfg_event, APCFG_BIT, pdTRUE, pdFALSE, pdMS_TO_TICKS(10 * 1000));
+        if (ev & APCFG_BIT) {
+            s_ap_config_active = false;
+            captive_dns_stop();
             web_ws_stop();
-            wifi_manager_connect(current_ssid,current_password);
+            wifi_manager_connect(current_ssid, current_password);
         }
     }
 }
 
-/** wifi功能和ap配网功能初始化
- * @param f wifi连接状态回调函数
- * @return 无 
-*/
 void ap_wifi_init(p_wifi_state_callback f)
 {
     index_html = initi_web_page_buffer();
     wifi_manager_init(f);
     apcfg_event = xEventGroupCreate();
-    xTaskCreatePinnedToCore(ap_wifi_task,"apcfg",4096,NULL,2,NULL,1);
+    xTaskCreatePinnedToCore(ap_wifi_task, "apcfg", 4096, NULL, 2, NULL, 1);
 }
 
-/** 连接某个热点
- * @param ssid
- * @param password
- * @return 无 
-*/
-void ap_wifi_set(const char* ssid,const char* password)
+void ap_wifi_set(const char *ssid, const char *password)
 {
-    wifi_manager_connect(ssid,password);
+    wifi_manager_connect(ssid, password);
 }
 
-/** 启动配网模式
- * @param enable 暂无用，强制true
- * @return 无 
-*/
 void ap_wifi_apcfg(bool enable)
 {
-    if(enable)
-    {
+    if (enable) {
+        s_ap_config_active = true;
         wifi_manager_ap();
-        ws_cfg_t ws = 
-        {
+        ws_cfg_t ws = {
             .html_code = index_html,
             .receive_fn = ws_receive_handle,
         };
         web_ws_start(&ws);
+        captive_dns_start();
     }
 }
 
 #define WIFI_NAMESPACE "storage"
-// 配对密码和wifi
+
 char saved_ssid[32] = {0};
 char saved_pwd[64] = {0};
 
 static void wifi_state_callback(WIFI_STATE state)
 {
-    if(state == WIFI_STATE_CONNECTED)
-    {
+    if (state == WIFI_STATE_CONNECTED) {
+        s_saved_wifi_connected = true;
+        s_ap_config_active = false;
         xEventGroupSetBits(wifi_ev, WIFI_CONNECT_BIT);
+    } else if (state == WIFI_STATE_DISCONNECTED) {
+        xEventGroupClearBits(wifi_ev, WIFI_CONNECT_BIT);
     }
 }
 
-void save_wifi_to_nvs(const char* ssid, const char* password) {
+static void saved_wifi_timeout_task(void *param)
+{
+    (void)param;
+
+    vTaskDelay(pdMS_TO_TICKS(SAVED_WIFI_CONNECT_TIMEOUT_MS));
+
+    if (!s_saved_wifi_connected && !s_ap_config_active) {
+        ESP_LOGW(TAG, "Saved Wi-Fi connect timeout, switching to AP config mode");
+        ap_wifi_apcfg(true);
+    }
+
+    s_saved_wifi_timeout_task = NULL;
+    vTaskDelete(NULL);
+}
+
+void save_wifi_to_nvs(const char *ssid, const char *password)
+{
     nvs_handle_t my_handle;
     esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &my_handle);
     if (err == ESP_OK) {
         nvs_set_str(my_handle, "ssid", ssid);
         nvs_set_str(my_handle, "password", password);
-        nvs_commit(my_handle); // 提交保存
+        nvs_commit(my_handle);
         nvs_close(my_handle);
-        ESP_LOGI("NVS", "Wi-Fi 信息已成功保存到 NVS！");
+        ESP_LOGI("NVS", "Wi-Fi info saved to NVS");
     }
 }
 
-// 📖 从 NVS 读取 Wi-Fi 信息
-bool load_wifi_from_nvs(char* ssid, size_t ssid_len, char* password, size_t pwd_len) {
+bool load_wifi_from_nvs(char *ssid, size_t ssid_len, char *password, size_t pwd_len)
+{
     nvs_handle_t my_handle;
     esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READONLY, &my_handle);
-    if (err != ESP_OK) return false;
-
-    size_t s_len = ssid_len; 
-    size_t p_len = pwd_len;
-
-    // 读取 SSID
-    err = nvs_get_str(my_handle, "ssid", ssid, &s_len);
-    if (err != ESP_OK) { 
-        nvs_close(my_handle); 
-        return false; 
+    if (err != ESP_OK) {
+        return false;
     }
 
-    // 读取 Password
+    size_t s_len = ssid_len;
+    size_t p_len = pwd_len;
+
+    err = nvs_get_str(my_handle, "ssid", ssid, &s_len);
+    if (err != ESP_OK) {
+        nvs_close(my_handle);
+        return false;
+    }
+
     err = nvs_get_str(my_handle, "password", password, &p_len);
-    nvs_close(my_handle); //
+    nvs_close(my_handle);
 
     return (err == ESP_OK);
 }
@@ -240,32 +402,38 @@ bool load_wifi_from_nvs(char* ssid, size_t ssid_len, char* password, size_t pwd_
 void ap_wifi_go(void)
 {
     bool has_saved_wifi = load_wifi_from_nvs(saved_ssid, sizeof(saved_ssid), saved_pwd, sizeof(saved_pwd));
+    s_saved_wifi_connected = false;
+    s_ap_config_active = false;
 
     if (has_saved_wifi) {
-        // 🟢 情况 A：曾经配过网，直接发起连接！
-        ESP_LOGI("MAIN", "检测到历史Wi-Fi配置：%s，直接自动连接...", saved_ssid);
-        
-        wifi_manager_init(wifi_state_callback); // 仅初始化 STA 即可
-        wifi_manager_connect(saved_ssid, saved_pwd); // 直接连接
-    } 
-    else {
-        // 🔴 情况 B：白板新机器，开启 AP 热点逼迫用户配网
-        ESP_LOGI("MAIN", "未检测到Wi-Fi配置，启动 AP 网页配网模式...");
-        
-        ap_wifi_init(wifi_state_callback); //
-        ap_wifi_apcfg(true); // 开启 AP 热点
+        ESP_LOGI("MAIN", "Found saved Wi-Fi config: %s, trying auto connect...", saved_ssid);
+        ap_wifi_init(wifi_state_callback);
+        wifi_manager_connect(saved_ssid, saved_pwd);
+        if (s_saved_wifi_timeout_task == NULL) {
+            xTaskCreatePinnedToCore(saved_wifi_timeout_task, "wifi_timeout", 3072, NULL, 2,
+                                    &s_saved_wifi_timeout_task, 1);
+        }
+    } else {
+        ESP_LOGI("MAIN", "No Wi-Fi config found, starting AP captive portal...");
+        ap_wifi_init(wifi_state_callback);
+        ap_wifi_apcfg(true);
     }
 }
 
-
-void erase_wifi_from_nvs(void) {
+void erase_wifi_from_nvs(void)
+{
     nvs_handle_t my_handle;
     esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &my_handle);
     if (err == ESP_OK) {
         nvs_erase_key(my_handle, "ssid");
         nvs_erase_key(my_handle, "password");
-        nvs_commit(my_handle); // 提交生效
+        nvs_commit(my_handle);
         nvs_close(my_handle);
-        ESP_LOGI("NVS", "🗑️ 旧 Wi-Fi 配置已成功擦除！");
+        ESP_LOGI("NVS", "Saved Wi-Fi config erased");
     }
+}
+
+bool ap_wifi_is_config_mode_active(void)
+{
+    return s_ap_config_active;
 }

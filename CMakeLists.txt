@@ -5,8 +5,8 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-# 根目�?
-# 必须�?include 之前设置，注意路径层�?
+# 根目�?
+# 必须�?include 之前设置，注意路径层�?
 set(EXTRA_COMPONENT_DIRS 
     "components/app"
     "components/bsp"
@@ -14,4 +14,4 @@ set(EXTRA_COMPONENT_DIRS
 )
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(esp32_mqtt_system)
+project(MoYu_Badge)

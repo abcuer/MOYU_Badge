@@ -15,7 +15,6 @@ void onenet_dm_init(void)
  */
 void onenet_property_handle(cJSON* property_js)
 {
-    // 由于 LED 已删除，这里仅打印接收到的原始数据，不做逻辑处理
     char *raw_data = cJSON_PrintUnformatted(property_js);
     ESP_LOGI(TAG, "Downlink data received (No action defined): %s", raw_data);
     cJSON_free(raw_data);

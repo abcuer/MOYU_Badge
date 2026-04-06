@@ -13,6 +13,7 @@ void app_main(void)
 {
     // ── 第一步：最高优先，WiFi尽早启动 ──────
     nvs_flash_init();
+    ota_mark_app_valid_if_needed();
     settings_init();
     wifi_ev = xEventGroupCreate();
     ap_wifi_go();

@@ -2,8 +2,6 @@
 
 static key_instance_s keys[KEY_NUM];
 
-// Kept for compatibility with existing headers. The key task no longer relies
-// on GPIO interrupts or this semaphore.
 SemaphoreHandle_t key_sem = NULL;
 
 void key_reset_fsm(key_type_t type)
@@ -15,6 +13,7 @@ void key_reset_fsm(key_type_t type)
     key_instance_s *ins = &keys[type];
     ins->running_param.state = KEY_IDLE;
     ins->running_param.long_triggered = false;
+    ins->running_param.super_long_triggered = false;
     ins->running_param.last_tick = 0;
 }
 
@@ -38,6 +37,7 @@ void key_device_init(void)
     keys[KEY_USER].static_param.press_level = 0;
     keys[KEY_USER].running_param.state = KEY_IDLE;
     keys[KEY_USER].running_param.long_triggered = false;
+    keys[KEY_USER].running_param.super_long_triggered = false;
     keys[KEY_USER].running_param.last_tick = 0;
 
     gpio_config_t io_conf = {
@@ -75,6 +75,7 @@ key_event_e key_get_event(key_type_t type)
                 if ((now - ins->running_param.last_tick) >= KEY_DEBOUNCE_MS) {
                     ins->running_param.state = KEY_PRESSING;
                     ins->running_param.long_triggered = false;
+                    ins->running_param.super_long_triggered = false;
                 }
             } else {
                 ins->running_param.state = KEY_IDLE;
@@ -83,13 +84,17 @@ key_event_e key_get_event(key_type_t type)
 
         case KEY_PRESSING:
             if (is_pressed) {
-                if (!ins->running_param.long_triggered &&
-                    (now - ins->running_param.last_tick) >= KEY_LONG_PRESS_MS) {
+                uint32_t press_ms = now - ins->running_param.last_tick;
+                if (!ins->running_param.long_triggered && press_ms >= KEY_LONG_PRESS_MS) {
                     ins->running_param.long_triggered = true;
                     event = KEY_EVENT_LONG;
+                } else if (!ins->running_param.super_long_triggered &&
+                           press_ms >= KEY_SUPER_LONG_PRESS_MS) {
+                    ins->running_param.super_long_triggered = true;
+                    event = KEY_EVENT_SUPER_LONG;
                 }
             } else {
-                if (!ins->running_param.long_triggered) {
+                if (!ins->running_param.long_triggered && !ins->running_param.super_long_triggered) {
                     event = KEY_EVENT_SHORT;
                 }
                 ins->running_param.state = KEY_IDLE;

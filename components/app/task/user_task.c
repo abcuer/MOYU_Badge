@@ -1,6 +1,7 @@
 #include "headfile.h"
 
 volatile bool is_first_sync_done = false;
+volatile bool has_started_ap_config = false;
 
 /**
  * @brief 同步任务：等待 WiFi 连接 -> 初始化 SNTP -> 等待对时成功
@@ -34,10 +35,13 @@ void start_sensor_task(void *pvParameters)
     while(1)
     {   
         if(mode == MODE_BALL || mode == MODE_DINO || mode == MODE_PLANE ||
-           (mode == MODE_SETTING && setting_ui_is_volume_editing())) {
-            imu_get_angle(&acc, &gyro, &euler_angle, 20.0f/1000.0f);
+           (mode == MODE_SETTING && setting_ui_is_volume_editing()) ||
+           (mode == MODE_RADIO && radio_ui_is_volume_editing())) {
+            imu_get_angle(&gyroAccel, &euler_angle, 20.0f/1000.0f);
             if (mode == MODE_SETTING) {
                 setting_ui_update_volume_tilt(euler_angle.roll);
+            } else if (mode == MODE_RADIO) {
+                radio_ui_update_volume_tilt(euler_angle.roll);
             }
             vTaskDelay(pdMS_TO_TICKS(20));
         }
@@ -96,10 +100,12 @@ void start_key_task(void *pvParameters)
 void start_oled_task(void *pvParameters)
 {
     u8g2_init(); //
+    reset_sync_ui_timer();
 
     // 🎯 1. 只有开机第一次没同步完，才进这里
     while (!is_first_sync_done) 
     {
+        has_started_ap_config = ap_wifi_is_config_mode_active();
         draw_syncing_ui(&u8g2); //
         vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD)); 
     }

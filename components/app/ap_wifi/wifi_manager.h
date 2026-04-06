@@ -45,5 +45,7 @@ esp_err_t wifi_manager_connect(const char* ssid,const char* password);
  * @return 是/否
 */
 bool wifi_manager_is_connect(void);
+const char *wifi_manager_get_ap_ssid(void);
+const char *wifi_manager_get_ap_password(void);
 
 #endif
