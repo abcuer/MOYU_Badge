@@ -59,6 +59,4 @@ void key_reset_fsm(key_type_t type);
 }
 #endif
 
-extern SemaphoreHandle_t key_sem;
-
 #endif

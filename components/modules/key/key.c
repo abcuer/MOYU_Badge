@@ -2,8 +2,6 @@
 
 static key_instance_s keys[KEY_NUM];
 
-SemaphoreHandle_t key_sem = NULL;
-
 void key_reset_fsm(key_type_t type)
 {
     if (type >= KEY_NUM) {
