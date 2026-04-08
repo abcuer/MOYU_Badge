@@ -1,5 +1,6 @@
 #include "max98357.h"
 
+#include "driver/gpio.h"
 #include "driver/i2s_common.h"
 #include "driver/i2s_std.h"
 #include "esp_log.h"
@@ -8,6 +9,7 @@
 #define MAX98357_DMA_DESC_NUM        8
 #define MAX98357_DMA_FRAME_NUM       512
 #define MAX98357_MAX_INPUT_PCM_BYTES 4096
+#define MAX98357_I2S_PORT            I2S_NUM_1
 
 static const char *TAG = "max98357";
 
@@ -16,6 +18,27 @@ static uint32_t s_i2s_rate = 0;
 static uint8_t s_i2s_channels = 0;
 static SemaphoreHandle_t s_i2s_mutex = NULL;
 static portMUX_TYPE s_i2s_mutex_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static void max98357_set_idle_gpio_levels(void)
+{
+    const gpio_num_t pins[] = {
+        (gpio_num_t)MAX98357_BCLK_PIN,
+        (gpio_num_t)MAX98357_LRC_PIN,
+        (gpio_num_t)MAX98357_DIN_PIN,
+    };
+
+    for (size_t i = 0; i < sizeof(pins) / sizeof(pins[0]); i++) {
+        gpio_config_t cfg = {
+            .pin_bit_mask = 1ULL << pins[i],
+            .mode = GPIO_MODE_OUTPUT,
+            .pull_up_en = GPIO_PULLUP_DISABLE,
+            .pull_down_en = GPIO_PULLDOWN_ENABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        gpio_config(&cfg);
+        gpio_set_level(pins[i], 0);
+    }
+}
 
 static SemaphoreHandle_t max98357_get_mutex(void)
 {
@@ -69,6 +92,7 @@ void max98357_deinit(void)
 
     s_i2s_rate = 0;
     s_i2s_channels = 0;
+    max98357_set_idle_gpio_levels();
     xSemaphoreGive(mutex);
 }
 
@@ -97,7 +121,7 @@ esp_err_t max98357_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per
     s_i2s_rate = 0;
     s_i2s_channels = 0;
 
-    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(MAX98357_I2S_PORT, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = MAX98357_DMA_DESC_NUM;
     chan_cfg.dma_frame_num = MAX98357_DMA_FRAME_NUM;
     chan_cfg.auto_clear_after_cb = true;
@@ -131,6 +155,7 @@ esp_err_t max98357_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per
         ESP_LOGE(TAG, "init i2s std failed: %d", ret);
         i2s_del_channel(s_tx_handle);
         s_tx_handle = NULL;
+        max98357_set_idle_gpio_levels();
         xSemaphoreGive(mutex);
         return ret;
     }
@@ -140,6 +165,7 @@ esp_err_t max98357_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per
         ESP_LOGE(TAG, "enable i2s failed: %d", ret);
         i2s_del_channel(s_tx_handle);
         s_tx_handle = NULL;
+        max98357_set_idle_gpio_levels();
         xSemaphoreGive(mutex);
         return ret;
     }

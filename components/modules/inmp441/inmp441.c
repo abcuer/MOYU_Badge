@@ -3,15 +3,54 @@
 #include "driver/i2s_common.h"
 #include "driver/i2s_std.h"
 #include "esp_log.h"
+#include "memory.h"
 
 #define INMP441_DMA_DESC_NUM  6
 #define INMP441_DMA_FRAME_NUM 256
+#define INMP441_I2S_PORT      I2S_NUM_0
+#define INMP441_RAW_CHUNK_SAMPLES 128
 
 static const char *TAG = "inmp441";
 
 static i2s_chan_handle_t s_rx_handle = NULL;
 static uint32_t s_sample_rate = 0;
 static uint8_t s_bits_per_sample = 0;
+static inmp441_diag_t s_diag = {0};
+static int32_t s_hp_prev_x = 0;
+static int32_t s_hp_prev_y = 0;
+
+static uint32_t inmp441_shift_abs(int32_t raw, uint8_t shift)
+{
+    int32_t scaled = raw >> shift;
+    return (scaled < 0) ? (uint32_t)(-scaled) : (uint32_t)scaled;
+}
+
+static void inmp441_update_diag_from_raw(int32_t raw, bool first_sample)
+{
+    if (first_sample) {
+        s_diag.raw_min = raw;
+        s_diag.raw_max = raw;
+        s_diag.abs_max_shift_8 = 0;
+        s_diag.abs_max_shift_10 = 0;
+        s_diag.abs_max_shift_12 = 0;
+        s_diag.abs_max_shift_14 = 0;
+        s_diag.abs_max_shift_16 = 0;
+    } else {
+        if (raw < s_diag.raw_min) s_diag.raw_min = raw;
+        if (raw > s_diag.raw_max) s_diag.raw_max = raw;
+    }
+
+    uint32_t abs8 = inmp441_shift_abs(raw, 8);
+    uint32_t abs10 = inmp441_shift_abs(raw, 10);
+    uint32_t abs12 = inmp441_shift_abs(raw, 12);
+    uint32_t abs14 = inmp441_shift_abs(raw, 14);
+    uint32_t abs16 = inmp441_shift_abs(raw, 16);
+    if (abs8 > s_diag.abs_max_shift_8) s_diag.abs_max_shift_8 = abs8;
+    if (abs10 > s_diag.abs_max_shift_10) s_diag.abs_max_shift_10 = abs10;
+    if (abs12 > s_diag.abs_max_shift_12) s_diag.abs_max_shift_12 = abs12;
+    if (abs14 > s_diag.abs_max_shift_14) s_diag.abs_max_shift_14 = abs14;
+    if (abs16 > s_diag.abs_max_shift_16) s_diag.abs_max_shift_16 = abs16;
+}
 
 void inmp441_deinit(void)
 {
@@ -23,6 +62,9 @@ void inmp441_deinit(void)
 
     s_sample_rate = 0;
     s_bits_per_sample = 0;
+    memset(&s_diag, 0, sizeof(s_diag));
+    s_hp_prev_x = 0;
+    s_hp_prev_y = 0;
 }
 
 esp_err_t inmp441_init(uint32_t sample_rate, uint8_t bits_per_sample)
@@ -37,7 +79,7 @@ esp_err_t inmp441_init(uint32_t sample_rate, uint8_t bits_per_sample)
 
     inmp441_deinit();
 
-    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
+    i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(INMP441_I2S_PORT, I2S_ROLE_MASTER);
     chan_cfg.dma_desc_num = INMP441_DMA_DESC_NUM;
     chan_cfg.dma_frame_num = INMP441_DMA_FRAME_NUM;
 
@@ -49,7 +91,7 @@ esp_err_t inmp441_init(uint32_t sample_rate, uint8_t bits_per_sample)
 
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sample_rate),
-        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
+        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_MONO),
         .gpio_cfg = {
             .mclk = I2S_GPIO_UNUSED,
             .bclk = INMP441_SCK_PIN,
@@ -83,9 +125,10 @@ esp_err_t inmp441_init(uint32_t sample_rate, uint8_t bits_per_sample)
     return ESP_OK;
 }
 
-esp_err_t inmp441_read(int16_t *buffer, size_t sample_count, size_t *samples_read, TickType_t timeout_ticks)
+esp_err_t inmp441_read_raw(int32_t *buffer, size_t sample_count, size_t *samples_read, TickType_t timeout_ticks)
 {
-    size_t bytes_read = 0;
+    static int32_t raw_buf[INMP441_RAW_CHUNK_SAMPLES];
+    size_t total_samples = 0;
 
     if (buffer == NULL || sample_count == 0) {
         return ESP_ERR_INVALID_ARG;
@@ -94,9 +137,94 @@ esp_err_t inmp441_read(int16_t *buffer, size_t sample_count, size_t *samples_rea
         return ESP_ERR_INVALID_STATE;
     }
 
-    esp_err_t ret = i2s_channel_read(s_rx_handle, buffer, sample_count * sizeof(int16_t), &bytes_read, timeout_ticks);
-    if (samples_read != NULL) {
-        *samples_read = bytes_read / sizeof(int16_t);
+    while (total_samples < sample_count) {
+        size_t bytes_read = 0;
+        size_t want_samples = sample_count - total_samples;
+        if (want_samples > INMP441_RAW_CHUNK_SAMPLES) {
+            want_samples = INMP441_RAW_CHUNK_SAMPLES;
+        }
+
+        esp_err_t ret = i2s_channel_read(s_rx_handle, raw_buf, want_samples * sizeof(int32_t),
+                                         &bytes_read, timeout_ticks);
+        if (ret != ESP_OK) {
+            if (samples_read != NULL) {
+                *samples_read = total_samples;
+            }
+            return ret;
+        }
+
+        size_t got_samples = bytes_read / sizeof(int32_t);
+
+        for (size_t i = 0; i < got_samples; i++) {
+            int32_t raw = raw_buf[i];
+            inmp441_update_diag_from_raw(raw, total_samples == 0 && i == 0);
+            buffer[total_samples++] = raw;
+        }
+
+        if (got_samples == 0) {
+            break;
+        }
     }
-    return ret;
+
+    if (samples_read != NULL) {
+        *samples_read = total_samples;
+    }
+    return ESP_OK;
+}
+
+esp_err_t inmp441_read(int16_t *buffer, size_t sample_count, size_t *samples_read, TickType_t timeout_ticks)
+{
+    static int32_t raw_buf[INMP441_RAW_CHUNK_SAMPLES];
+    size_t total_samples = 0;
+
+    if (buffer == NULL || sample_count == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    while (total_samples < sample_count) {
+        size_t got_samples = 0;
+        size_t want_samples = sample_count - total_samples;
+        if (want_samples > INMP441_RAW_CHUNK_SAMPLES) {
+            want_samples = INMP441_RAW_CHUNK_SAMPLES;
+        }
+
+        esp_err_t ret = inmp441_read_raw(raw_buf, want_samples, &got_samples, timeout_ticks);
+        if (ret != ESP_OK) {
+            if (samples_read != NULL) {
+                *samples_read = total_samples;
+            }
+            return ret;
+        }
+
+        for (size_t i = 0; i < got_samples; i++) {
+            int32_t scaled = raw_buf[i] >> 16;
+            int32_t hp = scaled - s_hp_prev_x + ((s_hp_prev_y * 63) / 64);
+            s_hp_prev_x = scaled;
+            s_hp_prev_y = hp;
+            scaled = hp * 2;
+            if (scaled > INT16_MAX) {
+                scaled = INT16_MAX;
+            } else if (scaled < INT16_MIN) {
+                scaled = INT16_MIN;
+            }
+            buffer[total_samples++] = (int16_t)scaled;
+        }
+
+        if (got_samples == 0) {
+            break;
+        }
+    }
+
+    if (samples_read != NULL) {
+        *samples_read = total_samples;
+    }
+    return ESP_OK;
+}
+
+void inmp441_get_diag(inmp441_diag_t *diag)
+{
+    if (diag == NULL) {
+        return;
+    }
+    *diag = s_diag;
 }

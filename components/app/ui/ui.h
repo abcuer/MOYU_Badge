@@ -12,6 +12,8 @@ typedef enum {
     MODE_RADIO, 
     MODE_BLOOD,
     MODE_SETTING,
+    MODE_RECORDER,
+    MODE_AI_CHAT,
     MODE_BALL,
     MODE_DINO,
     MODE_PLANE,
@@ -22,6 +24,8 @@ static const ui_mode_e main_app_list[] = {
     MODE_BLOOD,
     MODE_GAME_SELECT,
     MODE_RADIO,
+    MODE_RECORDER,
+    MODE_AI_CHAT,
     MODE_SETTING,
 };
 
@@ -129,6 +133,8 @@ void dino_game_reset(DinoGame_t *game);
 void draw_plane_game(u8g2_t *u8g2);
 void air_game_reset(AirGame_t *game);
 void draw_blood_ui(u8g2_t *u8g2);
+void draw_recorder_ui(u8g2_t *u8g2);
+void draw_ai_chat_ui(u8g2_t *u8g2);
 void reset_blood_ui_timer(void);
 void draw_setting_ui(u8g2_t *u8g2);
 void setting_ui_reset_state(void);

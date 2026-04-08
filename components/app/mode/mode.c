@@ -17,12 +17,22 @@ static void app_mode_set(ui_mode_e next_mode)
         }
         audio_player_exit_radio_mode();
     }
+    if (mode == MODE_RECORDER && next_mode != MODE_RECORDER) {
+        recorder_exit_mode();
+    }
+    if (mode == MODE_AI_CHAT && next_mode != MODE_AI_CHAT) {
+        ai_chat_exit_mode();
+    }
     if (next_mode != MODE_SETTING) {
         setting_ui_reset_state();
     }
     mode = next_mode;
     if (mode == MODE_RADIO) {
         audio_player_enter_radio_mode();
+    } else if (mode == MODE_RECORDER) {
+        recorder_enter_mode();
+    } else if (mode == MODE_AI_CHAT) {
+        ai_chat_enter_mode();
     } else if (mode == MODE_SETTING) {
         setting_ui_reset_state();
     }
@@ -91,6 +101,38 @@ void key_scan(void)
             if (!radio_ui_is_volume_editing()) {
                 audio_player_next_station();
             }
+            return;
+        }
+    }
+
+    if (!in_select && mode == MODE_AI_CHAT) {
+        if (event == KEY_EVENT_SUPER_LONG) {
+            ai_chat_exit_mode();
+            app_mode_set(MODE_CLOCK);
+            selected_game = MODE_AI_CHAT;
+            menu_layer = 1;
+            in_select = true;
+            return;
+        }
+
+        if (event == KEY_EVENT_LONG) {
+            return;
+        }
+
+        if (event == KEY_EVENT_SHORT) {
+            ai_chat_handle_short_press();
+            return;
+        }
+    }
+
+    if (!in_select && mode == MODE_RECORDER) {
+        if (event == KEY_EVENT_SHORT) {
+            recorder_handle_short_press();
+            return;
+        }
+
+        if (event == KEY_EVENT_LONG && recorder_get_state() != RECORDER_STATE_IDLE) {
+            recorder_stop_and_reset();
             return;
         }
     }

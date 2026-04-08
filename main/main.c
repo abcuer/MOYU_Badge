@@ -18,6 +18,8 @@ void app_main(void)
     wifi_ev = xEventGroupCreate();
     ap_wifi_go();
     audio_player_init();
+    recorder_init();
+    ai_chat_init();
     audio_player_set_volume(settings_get_volume());
 
     // ── 第二步：立即启动依赖WiFi的任务 ──────

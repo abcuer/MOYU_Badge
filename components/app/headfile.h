@@ -37,6 +37,8 @@
 #include "user_task.h"
 #include "settings.h"
 #include "audio_player.h"
+#include "recorder.h"
+#include "ai_chat.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
