@@ -431,7 +431,6 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
         [MODE_BLOOD]       = {"SpO2",     238},  
         [MODE_SETTING]     = {"System",   129},
         [MODE_RECORDER]    = {"Record",   137},
-        [MODE_AI_CHAT]     = {"AI",       153},
         [MODE_BALL]        = {"Ball",     175},  
         [MODE_DINO]        = {"Dino",     259}, 
         [MODE_PLANE]       = {"Plane",    165}, 
@@ -1197,96 +1196,6 @@ void draw_recorder_ui(u8g2_t *u8g2)
     }
 
     u8g2_DrawStr(u8g2, 10, 61, hint_text);
-    u8g2_SendBuffer(u8g2);
-}
-
-void draw_ai_chat_ui(u8g2_t *u8g2)
-{
-    ai_chat_state_t state = ai_chat_get_state();
-    uint16_t peak = ai_chat_get_peak_level();
-    uint32_t err = ai_chat_get_last_error_code();
-    int bar_w = (peak * 120) / 32767;
-    char buf[40];
-    const char *state_text = "Idle";
-    const char *hint_text = "Short: Talk  Hold: Exit";
-
-    if (bar_w < 0) {
-        bar_w = 0;
-    }
-    if (bar_w > 120) {
-        bar_w = 120;
-    }
-
-    switch (state) {
-        case AI_CHAT_STATE_LISTENING_WAKEWORD:
-            state_text = "Listening";
-            hint_text = ai_chat_is_configured() ? "Short press to talk" : "Configure endpoint";
-            break;
-        case AI_CHAT_STATE_RECORDING_QUERY:
-            state_text = "Speaking";
-            hint_text = "Short press to send";
-            break;
-        case AI_CHAT_STATE_UPLOADING:
-            state_text = "Uploading";
-            hint_text = "Sending audio";
-            break;
-        case AI_CHAT_STATE_WAITING_REPLY:
-            state_text = "Thinking";
-            hint_text = "Waiting reply";
-            break;
-        case AI_CHAT_STATE_PLAYING_REPLY:
-            state_text = "Replying";
-            hint_text = "Short press to stop";
-            break;
-        case AI_CHAT_STATE_ERROR:
-            state_text = "Error";
-            if (!ai_chat_is_configured()) {
-                hint_text = "Need endpoint/appid/token";
-            } else if (err == 1) {
-                hint_text = "WiFi disconnected";
-            } else if (err == 2) {
-                hint_text = "WS connect timeout";
-            } else if (err == 6) {
-                hint_text = "Upload failed";
-            } else if (err == 8) {
-                hint_text = "Reply timeout";
-            } else if (err == 10) {
-                hint_text = "Dialog start failed";
-            } else if (err == 11) {
-                hint_text = "Session rejected";
-            } else if (err == 12) {
-                hint_text = "Server error frame";
-            } else if (err == 13) {
-                hint_text = "Payload decode failed";
-            } else if (err == 16) {
-                hint_text = "No speech detected";
-            } else {
-                hint_text = "Check cloud protocol";
-            }
-            break;
-        case AI_CHAT_STATE_IDLE:
-        default:
-            state_text = "Idle";
-            break;
-    }
-
-    u8g2_ClearBuffer(u8g2);
-    u8g2_SetFont(u8g2, u8g2_font_6x12_tf);
-    u8g2_DrawStr(u8g2, 28, 10, "- AI CHAT -");
-    u8g2_DrawHLine(u8g2, 0, 12, 128);
-
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    snprintf(buf, sizeof(buf), "State: %s", state_text);
-    u8g2_DrawStr(u8g2, 4, 24, buf);
-    snprintf(buf, sizeof(buf), "Err  : %lu", (unsigned long)err);
-    u8g2_DrawStr(u8g2, 4, 36, buf);
-
-    u8g2_DrawFrame(u8g2, 4, 42, 120, 10);
-    if (bar_w > 0) {
-        u8g2_DrawBox(u8g2, 4, 42, bar_w, 10);
-    }
-
-    u8g2_DrawStr(u8g2, 4, 61, hint_text);
     u8g2_SendBuffer(u8g2);
 }
 
