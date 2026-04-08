@@ -11,9 +11,9 @@
 extern "C" {
 #endif
 
-#define MAX98357_LRC_PIN  12
-#define MAX98357_BCLK_PIN 13
-#define MAX98357_DIN_PIN  14
+#define MAX98357_LRC_PIN  42
+#define MAX98357_BCLK_PIN 41
+#define MAX98357_DIN_PIN  40
 
 esp_err_t max98357_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample);
 void max98357_deinit(void);

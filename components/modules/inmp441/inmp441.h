@@ -11,10 +11,10 @@
 extern "C" {
 #endif
 
+#define INMP441_SD_PIN  20
+#define INMP441_SCK_PIN 21
+#define INMP441_WS_PIN  47
 
-#define INMP441_SCK_PIN 9
-#define INMP441_WS_PIN  10
-#define INMP441_SD_PIN  11
 
 typedef struct {
     int32_t raw_min;

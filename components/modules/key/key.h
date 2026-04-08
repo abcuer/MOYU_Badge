@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 #define KEY_NUM 1
-#define USER_KEY_PIN 3
+#define USER_KEY_PIN 19
 
 #define KEY_DEBOUNCE_MS 20
 #define KEY_LONG_PRESS_MS 1000

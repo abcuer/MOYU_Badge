@@ -4,8 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define BMP_SDA_PIN         16
-#define BMP_SCL_PIN         15
+#define BMP_SDA_PIN         45
+#define BMP_SCL_PIN         0
 
 #define BMP_IIC_BUS         0
 #define BMP280_ADDR         0x76
