@@ -113,24 +113,6 @@ static uint8_t u8x8_gpio_and_delay(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, v
     return 1;
 }
 
-/**
- * @brief 在指定位置绘制 32x32 图标
- * @param x 横坐标
- * @param y 纵坐标
- */
-void OLED_DrawBluetoothIcon(uint8_t x, uint8_t y)
-{
-    // 1. 清除内部缓冲区
-    u8g2_ClearBuffer(&u8g2); 
-    
-    // 2. 绘制 XBM 图标
-    // 参数含义：结构体, x, y, 宽度, 高度, 位图数组
-    u8g2_DrawXBM(&u8g2, x, y, 32, 32, icon_bt); 
-    
-    // 3. 将缓冲区数据发送到屏幕
-    u8g2_SendBuffer(&u8g2); 
-}
-
 void u8g2_init(void)
 {
     oled_init();
