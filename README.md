@@ -45,7 +45,7 @@ Demo 视频：[B 站演示](https://www.bilibili.com/video/BV14hXEBbEjP)
 
 ### 开发环境
 
-- ESP-IDF 5.3.x
+- ESP-IDF 5.3.4
 - FreeRTOS
 - VS Code
 
