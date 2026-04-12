@@ -6,6 +6,10 @@
 
 #include "u8g2.h"
 
+// 飞机大战模式设置
+#define MAX_BULLETS 25
+#define MAX_ENEMIES 3
+
 typedef enum {
     MODE_CLOCK = 0,
     MODE_GAME_SELECT,
@@ -33,6 +37,13 @@ static const ui_mode_e sub_game_list[] = {
     MODE_PLANE,
     MODE_GAME_SELECT,
 };
+
+typedef enum {
+    SETTING_PAGE_MENU = 0,
+    SETTING_PAGE_INFO,
+    SETTING_PAGE_VOLUME,
+    SETTING_PAGE_WIFI_RESET,
+} setting_page_t;
 
 typedef struct {
     const char *name;
@@ -87,9 +98,6 @@ typedef struct {
     Din_Obstacle_t obs;
 } DinoGame_t;
 
-#define MAX_BULLETS 25
-#define MAX_ENEMIES 3
-
 typedef struct {
     float x;
     float y;
@@ -138,6 +146,7 @@ void setting_ui_reset_state(void);
 bool setting_ui_handle_short_press(void);
 bool setting_ui_handle_long_press(void);
 bool setting_ui_is_volume_editing(void);
+bool setting_ui_is_info_page(void);
 void setting_ui_update_volume_tilt(float roll);
 void setting_ui_set_wifi_reset_armed(bool armed);
 bool setting_ui_is_wifi_reset_armed(void);

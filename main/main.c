@@ -5,7 +5,7 @@ TaskHandle_t sync_task_handle = NULL;
 EventGroupHandle_t wifi_ev = NULL;
 
 /* 新机器需要配网:
-    连接wifi: ESP32-AP 密码：12345678，浏览器配网搜索"192.168.100.1"
+    连接wifi: MoYu_Modge 密码：12345678
     配置完毕后，之后 ESP32 会搜索已配置的网络自动连接
 */
 
@@ -13,13 +13,8 @@ void app_main(void)
 {
     // ── 第一步：最高优先，WiFi尽早启动 ──────
     nvs_flash_init();
-    ota_mark_app_valid_if_needed();
-    settings_init();
     wifi_ev = xEventGroupCreate();
     ap_wifi_go();
-    audio_player_init();
-    recorder_init();
-    audio_player_set_volume(settings_get_volume());
 
     // ── 第二步：立即启动依赖WiFi的任务 ──────
     // WiFi已经在后台连接，同步任务会自己等待连接成功
@@ -30,4 +25,10 @@ void app_main(void)
     xTaskCreate(start_sensor_task, "sensor_task", 8192, NULL, 6, &sensor_task_handle);
     xTaskCreate(start_key_task, "key_task", 4196, NULL, 7, NULL);
     xTaskCreate(start_onenet_task, "upload_task", 8192, NULL, 3, NULL);
+
+    ota_mark_app_valid_if_needed();
+    settings_init();
+    audio_player_init();
+    recorder_init();
+    audio_player_set_volume(settings_get_volume());
 }

@@ -5,12 +5,7 @@ ui_mode_e mode = MODE_CLOCK;
 ui_mode_e selected_game = MODE_BALL;
 static bool setting_wifi_reset_armed = false;
 static setting_item_t s_setting_item = SETTING_ITEM_INFO;
-typedef enum {
-    SETTING_PAGE_MENU = 0,
-    SETTING_PAGE_INFO,
-    SETTING_PAGE_VOLUME,
-    SETTING_PAGE_WIFI_RESET,
-} setting_page_t;
+
 static setting_page_t s_setting_page = SETTING_PAGE_MENU;
 static bool s_setting_volume_editing = false;
 static uint8_t s_setting_preview_volume = SETTINGS_DEFAULT_VOLUME;
@@ -105,6 +100,11 @@ bool setting_ui_handle_long_press(void)
 bool setting_ui_is_volume_editing(void)
 {
     return s_setting_volume_editing;
+}
+
+bool setting_ui_is_info_page(void)
+{
+    return s_setting_page == SETTING_PAGE_INFO;
 }
 
 void setting_ui_update_volume_tilt(float roll)

@@ -1,4 +1,5 @@
 #include "headfile.h"
+static const uint32_t IDLE_SLEEP_TIMEOUT_MS = 35000;
 
 bool in_select = false;
 uint32_t last_action_time = 0;
@@ -31,6 +32,27 @@ static void app_mode_set(ui_mode_e next_mode)
     } else if (mode == MODE_SETTING) {
         setting_ui_reset_state();
     }
+}
+
+static bool mode_is_idle_sleep_page(void)
+{
+    if (mode == MODE_CLOCK) {
+        return true;
+    }
+
+    if (in_select) {
+        return true;
+    }
+
+    if (mode == MODE_GAME_SELECT) {
+        return true;
+    }
+
+    if (mode == MODE_SETTING && setting_ui_is_info_page()) {
+        return true;
+    }
+
+    return false;
 }
 
 void key_scan(void)
@@ -191,6 +213,8 @@ void key_scan(void)
 
 void enter_light_sleep(void)
 {
+    bool was_in_select = in_select;
+
     u8g2_SetPowerSave(&u8g2, 1);
     mpu6050_sleep(1);
     bmp280_sleep(1);
@@ -212,9 +236,7 @@ void enter_light_sleep(void)
     esp_light_sleep_start();
 
     u8g2_SetPowerSave(&u8g2, 0);
-    mpu6050_sleep(0);
-    bmp280_sleep(0);
-    max30102_sleep(0);
+    sensor_request_power_sync();
 
     if (sensor_task_handle != NULL) {
         vTaskResume(sensor_task_handle);
@@ -223,7 +245,7 @@ void enter_light_sleep(void)
         vTaskResume(sync_task_handle);
     }
 
-    in_select = false;
+    in_select = was_in_select;
     ignore_first_long_press_after_wake = true;
     s_radio_long_pending = false;
     setting_ui_set_wifi_reset_armed(false);
@@ -235,4 +257,20 @@ void enter_light_sleep(void)
         vTaskDelay(pdMS_TO_TICKS(10));
     }
     gpio_intr_enable(USER_KEY_PIN);
+}
+
+bool mode_try_enter_light_sleep(void)
+{
+    uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS;
+
+    if (!mode_is_idle_sleep_page()) {
+        return false;
+    }
+
+    if ((now - last_action_time) <= IDLE_SLEEP_TIMEOUT_MS) {
+        return false;
+    }
+
+    enter_light_sleep();
+    return true;
 }

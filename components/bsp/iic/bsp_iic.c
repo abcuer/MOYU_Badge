@@ -151,6 +151,29 @@ uint8_t IIC_Write_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t d
     return 0;
 }
 
+uint8_t IIC_Read_One_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg)
+{
+    uint8_t data = 0;
+
+    IICStart(bus);
+    IICSendByte(bus, daddr << 1);
+    if (IICWaitAck(bus)) {
+        IICStop(bus);
+        return 0xFF;
+    }
+    IICSendByte(bus, reg);
+    IICWaitAck(bus);
+
+    IICStart(bus);
+    IICSendByte(bus, (daddr << 1) + 1);
+    IICWaitAck(bus);
+    data = IICReceiveByte(bus);
+    IICSendNotAck(bus);
+    IICStop(bus);
+
+    return data;
+}
+
 uint8_t IIC_Read_Multi_Byte(iic_bus_t *bus, uint8_t daddr, uint8_t reg, uint8_t length, uint8_t buff[])
 {
     IICStart(bus);

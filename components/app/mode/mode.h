@@ -19,6 +19,7 @@ typedef enum {
 
 void key_scan(void);
 void enter_light_sleep(void);
+bool mode_try_enter_light_sleep(void);
 
 extern bool in_select;
 extern StepData_t step_data;

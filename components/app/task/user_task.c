@@ -3,81 +3,184 @@
 volatile bool is_first_sync_done = false;
 volatile bool has_started_ap_config = false;
 
-/**
- * @brief 同步任务：等待 WiFi 连接 -> 初始化 SNTP -> 等待对时成功
- */
+static volatile bool s_sensor_power_sync_required = false;
+
+#define OLED_FAST_REFRESH_MS    30
+#define OLED_MEDIUM_REFRESH_MS  100
+#define OLED_SLOW_REFRESH_MS    200
+#define OLED_CLOCK_REFRESH_MS   1000
+
+static bool sensor_mode_needs_imu(void)
+{
+    return mode == MODE_BALL ||
+           mode == MODE_DINO ||
+           mode == MODE_PLANE ||
+           (mode == MODE_SETTING && setting_ui_is_volume_editing()) ||
+           (mode == MODE_RADIO && radio_ui_is_volume_editing());
+}
+
+static bool sensor_mode_needs_bmp280(void)
+{
+    return mode == MODE_CLOCK;
+}
+
+static bool sensor_mode_needs_max30102(void)
+{
+    return mode == MODE_BLOOD;
+}
+
+static uint32_t oled_get_refresh_interval_ms(void)
+{
+    if (in_select) {
+        return OLED_SLOW_REFRESH_MS;
+    }
+
+    switch (mode)
+    {
+        case MODE_CLOCK:
+            return OLED_CLOCK_REFRESH_MS;
+
+        case MODE_BLOOD:
+        case MODE_BALL:
+        case MODE_DINO:
+        case MODE_PLANE:
+            return OLED_FAST_REFRESH_MS;
+
+        case MODE_RECORDER:
+            return (recorder_get_state() == RECORDER_STATE_IDLE)
+                       ? OLED_SLOW_REFRESH_MS
+                       : OLED_FAST_REFRESH_MS;
+
+        case MODE_RADIO:
+            return radio_ui_is_volume_editing()
+                       ? OLED_FAST_REFRESH_MS
+                       : OLED_MEDIUM_REFRESH_MS;
+
+        case MODE_SETTING:
+            if (setting_ui_is_volume_editing()) {
+                return OLED_FAST_REFRESH_MS;
+            }
+            return setting_ui_is_info_page()
+                       ? OLED_SLOW_REFRESH_MS
+                       : OLED_MEDIUM_REFRESH_MS;
+
+        case MODE_GAME_SELECT:
+            return OLED_SLOW_REFRESH_MS;
+
+        default:
+            return OLED_MEDIUM_REFRESH_MS;
+    }
+}
+
+void sensor_request_power_sync(void)
+{
+    s_sensor_power_sync_required = true;
+}
+
 void start_sync_task(void *pvParameters)
 {
-    // 🎯 1. 【开机第一次】：死等网络连接成功
     xEventGroupWaitBits(wifi_ev, WIFI_CONNECT_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
     vTaskDelay(pdMS_TO_TICKS(2000));
-    
-    fetch_time();     // 开机抓时间
-    fetch_weather();  // 开机抓天气
 
-    xEventGroupSetBits(wifi_ev, TIME_SYNC_BIT); // 释放时间同步标志
-    is_first_sync_done = true; // 宣布开机大功告成！
+    fetch_time();
+    fetch_weather();
 
-    while (1) 
+    xEventGroupSetBits(wifi_ev, TIME_SYNC_BIT);
+    is_first_sync_done = true;
+
+    while (1)
     {
-        vTaskDelay(pdMS_TO_TICKS(30 * 60 * 1000)); // 挂起 30 分钟
-        fetch_weather(); // 30 分钟后更新一次天气
+        vTaskDelay(pdMS_TO_TICKS(30 * 60 * 1000));
+        fetch_weather();
     }
 }
 
 void start_sensor_task(void *pvParameters)
 {
+    bool imu_active = false;
+    bool bmp280_active = false;
+    bool max30102_active = false;
+
     mpu6050_init();
     bmp280_init();
     max30102_init();
+
+    mpu6050_sleep(true);
+    bmp280_sleep(true);
+    max30102_sleep(true);
+
     xEventGroupWaitBits(wifi_ev, TIME_SYNC_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
 
-    while(1)
-    {   
-        if(mode == MODE_BALL || mode == MODE_DINO || mode == MODE_PLANE ||
-           (mode == MODE_SETTING && setting_ui_is_volume_editing()) ||
-           (mode == MODE_RADIO && radio_ui_is_volume_editing())) {
-            imu_get_angle(&gyroAccel, &euler_angle, 20.0f/1000.0f);
+    while (1)
+    {
+        bool need_imu;
+        bool need_bmp280;
+        bool need_max30102;
+
+        if (s_sensor_power_sync_required) {
+            imu_active = false;
+            bmp280_active = false;
+            max30102_active = false;
+            s_sensor_power_sync_required = false;
+        }
+
+        need_imu = sensor_mode_needs_imu();
+        need_bmp280 = sensor_mode_needs_bmp280();
+        need_max30102 = sensor_mode_needs_max30102();
+
+        if (need_imu != imu_active) {
+            mpu6050_sleep(!need_imu);
+            imu_active = need_imu;
+        }
+
+        if (!need_bmp280 && bmp280_active) {
+            bmp280_sleep(true);
+            bmp280_active = false;
+        } else if (need_bmp280 && !bmp280_active) {
+            bmp280_active = true;
+        }
+
+        if (need_max30102 != max30102_active) {
+            max30102_sleep(!need_max30102);
+            max30102_active = need_max30102;
+            blood_reset();
+        }
+
+        if (need_imu) {
+            imu_get_angle(&gyroAccel, &euler_angle, 20.0f / 1000.0f);
             if (mode == MODE_SETTING) {
                 setting_ui_update_volume_tilt(euler_angle.roll);
             } else if (mode == MODE_RADIO) {
                 radio_ui_update_volume_tilt(euler_angle.roll);
             }
             vTaskDelay(pdMS_TO_TICKS(20));
-        }
-        else if(mode == MODE_CLOCK) {
-            bmp280_read_data(&bmp280);  
+        } else if (need_bmp280) {
+            bmp280_read_data(&bmp280);
             vTaskDelay(pdMS_TO_TICKS(500));
-        }
-        else if(mode == MODE_BLOOD) {
+        } else if (need_max30102) {
             blood_detect();
             vTaskDelay(pdMS_TO_TICKS(20));
-        }
-        else{
+        } else {
             vTaskDelay(pdMS_TO_TICKS(200));
         }
     }
 }
 
-void start_onenet_task(void *pvParameters) 
+void start_onenet_task(void *pvParameters)
 {
     xEventGroupWaitBits(wifi_ev, TIME_SYNC_BIT, pdFALSE, pdTRUE, portMAX_DELAY);
-    // 启动 OneNET MQTT 连接
     onenet_start();
 
-    while (1) 
+    while (1)
     {
-        // 1. 读取传感器并生成 JSON
         cJSON *prop_json = onenet_property_upload_dm();
-        
-        if (prop_json != NULL) 
+
+        if (prop_json != NULL)
         {
             char *post_data = cJSON_PrintUnformatted(prop_json);
-            
-            // 2. 上报数据
+
             onenet_post_property_data(post_data);
 
-            // 3. 必须释放内存
             cJSON_free(post_data);
             cJSON_Delete(prop_json);
         }
@@ -86,11 +189,11 @@ void start_onenet_task(void *pvParameters)
     }
 }
 
-void start_key_task(void *pvParameters) 
+void start_key_task(void *pvParameters)
 {
-    key_device_init(); // Configure key GPIO and poll it in software.
-    
-    while(1) 
+    key_device_init();
+
+    while (1)
     {
         key_scan();
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -99,54 +202,47 @@ void start_key_task(void *pvParameters)
 
 void start_oled_task(void *pvParameters)
 {
-    u8g2_init(); //
+    uint32_t refresh_interval_ms;
+
+    u8g2_init();
     reset_sync_ui_timer();
 
-    // 🎯 1. 只有开机第一次没同步完，才进这里
-    while (!is_first_sync_done) 
+    while (!is_first_sync_done)
     {
         has_started_ap_config = ap_wifi_is_config_mode_active();
-        draw_syncing_ui(&u8g2); //
-        vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD)); 
+        draw_syncing_ui(&u8g2);
+        vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD));
     }
 
-    // 🎯 2. 用一个绝对无法跳出的外层 while(1) 锁死任务，绝不允许代码坠落到上面去！
-    last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS; // 进场先刷一次时间戳
+    last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
 
-    while (1) // 内部 UI 刷新小循环
+    while (1)
     {
-        uint32_t now = xTaskGetTickCount() * portTICK_PERIOD_MS; 
-
-        // 🎯 低功耗守卫 (35秒无操作)
-        if ((mode == MODE_CLOCK || mode == MODE_GAME_SELECT || mode == MODE_SETTING) && !in_select && (now - last_action_time > 35000)) 
-        {
-            enter_light_sleep(); //
-            
-            // 🚀 苏醒瞬间，立刻刷新 OLED 任务自己的本地时间戳，防止滑动坠落！
-            last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-            continue; //
+        if (mode_try_enter_light_sleep()) {
+            continue;
         }
 
-        if(in_select) //
+        if (in_select)
         {
-            draw_select_ui(&u8g2, selected_game); //
+            draw_select_ui(&u8g2, selected_game);
         }
-        else //
+        else
         {
-            switch (mode) //
+            switch (mode)
             {
-                case MODE_CLOCK:   draw_main_clock_ui(&u8g2); break; //
-                case MODE_RECORDER: draw_recorder_ui(&u8g2);  break; //
-                case MODE_BLOOD:   draw_blood_ui(&u8g2);      break; //
-                case MODE_BALL:    draw_ball_game(&u8g2);     break; //
-                case MODE_DINO:    draw_dino_game(&u8g2);     break; //
-                case MODE_PLANE:   draw_plane_game(&u8g2);    break; //
-                case MODE_RADIO:   draw_radio_ui(&u8g2);      break; //
-                case MODE_SETTING: draw_setting_ui(&u8g2);    break; //
-                default: break; //
+                case MODE_CLOCK:    draw_main_clock_ui(&u8g2); break;
+                case MODE_RECORDER: draw_recorder_ui(&u8g2);   break;
+                case MODE_BLOOD:    draw_blood_ui(&u8g2);      break;
+                case MODE_BALL:     draw_ball_game(&u8g2);     break;
+                case MODE_DINO:     draw_dino_game(&u8g2);     break;
+                case MODE_PLANE:    draw_plane_game(&u8g2);    break;
+                case MODE_RADIO:    draw_radio_ui(&u8g2);      break;
+                case MODE_SETTING:  draw_setting_ui(&u8g2);    break;
+                default: break;
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(OLED_PERIOD)); //
+        refresh_interval_ms = oled_get_refresh_interval_ms();
+        vTaskDelay(pdMS_TO_TICKS(refresh_interval_ms));
     }
 }
