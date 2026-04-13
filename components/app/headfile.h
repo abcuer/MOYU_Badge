@@ -15,7 +15,6 @@
 #include "esp_sleep.h"
 
 #include "ws2812.h"
-#include "led.h"
 #include "bmp280.h"
 #include "mpu6050.h"
 #include "imu.h"

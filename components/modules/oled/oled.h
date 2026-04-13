@@ -8,7 +8,6 @@
 #define OLED_SDA_PIN  16
 #define OLED_SCL_PIN  15
 
-void oled_init(void);
 void u8g2_init(void);
 
 extern u8g2_t u8g2;

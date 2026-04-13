@@ -33,8 +33,6 @@ static float Q_rsqrt(float number)
     return y;
 }
 
-static double normAccz; /* z轴方向的加速度 */
-
 /**
  * @description: 获取MPU6050六轴数据，通过互补滤波更新欧拉角
  * @param {GyroAccel_Struct} *gyroAccel mpu6050原始数据结构体
@@ -135,16 +133,6 @@ void imu_get_angle(GyroAccel_Struct  *gyroAccel,
     // 横滚角计算（Roll）
     eulerAngle->roll = atan2f(vecyZ, veczZ) * RtA;
 
-    // 计算地理坐标系Z轴方向上的实际加速度值
-    normAccz = gyroAccel->acc.x * vecxZ + gyroAccel->acc.y * vecyZ + gyroAccel->acc.z * veczZ;
 }
 
-/**
- * @description: 获取地理坐标系Z轴方向的加速度分量
- * @return {*}
- */
-float imu_get_norm_acc_z(void)
-{
-    return normAccz;
-}
 /* ====================== 结束 ================================== */

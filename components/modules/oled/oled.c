@@ -49,7 +49,7 @@ static void OLED_Clear(void)
         }
     }
 }
-void oled_init(void)
+static void oled_init(void)
 {
     delay_ms(5);        
     IICInit(&oled_bus); // 使用通用驱动初始化引脚

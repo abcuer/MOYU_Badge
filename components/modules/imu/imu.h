@@ -19,11 +19,6 @@ void imu_get_angle(GyroAccel_Struct  *gyroAccel,
                               EulerAngle_Struct *eulerAngle,
                               float              dt);
 
-/**
- * @brief 获取归一化后的Z轴加速度
- */
-float imu_get_norm_acc_z(void);
-
 /* 欧拉角计算用到的全局变量 */
 extern float RtA;   // 弧度 -> 角度
 

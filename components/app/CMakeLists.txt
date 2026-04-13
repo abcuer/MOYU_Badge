@@ -1,7 +1,6 @@
 # app
 
 file(GLOB_RECURSE SOURCES 
-    "ai/*.c"
     "ap_wifi/*.c"
     "task/*.c"
     "iot/*.c"
@@ -18,7 +17,6 @@ file(GLOB_RECURSE SOURCES
 idf_component_register(
     SRCS ${SOURCES}
     INCLUDE_DIRS 
-        "ai"
         "task" 
         "ap_wifi" 
         "iot"
@@ -35,6 +33,6 @@ idf_component_register(
         bsp modules
         nvs_flash esp_wifi esp_event esp_http_server json esp_http_client
         spiffs mbedtls mqtt lwip esp_netif esp_timer app_update esp_https_ota
-        espressif__esp_audio_codec espressif__esp_websocket_client
+        espressif__esp_audio_codec
 )
 

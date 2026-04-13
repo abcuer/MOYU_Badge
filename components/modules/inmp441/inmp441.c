@@ -3,7 +3,6 @@
 #include "driver/i2s_common.h"
 #include "driver/i2s_std.h"
 #include "esp_log.h"
-#include "memory.h"
 
 #define INMP441_DMA_DESC_NUM      6
 #define INMP441_DMA_FRAME_NUM     256
@@ -15,43 +14,9 @@ static const char *TAG = "inmp441";
 static i2s_chan_handle_t s_rx_handle = NULL;
 static uint32_t s_sample_rate = 0;
 static uint8_t s_bits_per_sample = 0;
-static inmp441_diag_t s_diag = {0};
 static int32_t s_hp_prev_x = 0;
 static int32_t s_hp_prev_y = 0;
 static int s_active_slot_index = -1;
-
-static uint32_t inmp441_shift_abs(int32_t raw, uint8_t shift)
-{
-    int32_t scaled = raw >> shift;
-    return (scaled < 0) ? (uint32_t)(-scaled) : (uint32_t)scaled;
-}
-
-static void inmp441_update_diag_from_raw(int32_t raw, bool first_sample)
-{
-    if (first_sample) {
-        s_diag.raw_min = raw;
-        s_diag.raw_max = raw;
-        s_diag.abs_max_shift_8 = 0;
-        s_diag.abs_max_shift_10 = 0;
-        s_diag.abs_max_shift_12 = 0;
-        s_diag.abs_max_shift_14 = 0;
-        s_diag.abs_max_shift_16 = 0;
-    } else {
-        if (raw < s_diag.raw_min) s_diag.raw_min = raw;
-        if (raw > s_diag.raw_max) s_diag.raw_max = raw;
-    }
-
-    uint32_t abs8 = inmp441_shift_abs(raw, 8);
-    uint32_t abs10 = inmp441_shift_abs(raw, 10);
-    uint32_t abs12 = inmp441_shift_abs(raw, 12);
-    uint32_t abs14 = inmp441_shift_abs(raw, 14);
-    uint32_t abs16 = inmp441_shift_abs(raw, 16);
-    if (abs8 > s_diag.abs_max_shift_8) s_diag.abs_max_shift_8 = abs8;
-    if (abs10 > s_diag.abs_max_shift_10) s_diag.abs_max_shift_10 = abs10;
-    if (abs12 > s_diag.abs_max_shift_12) s_diag.abs_max_shift_12 = abs12;
-    if (abs14 > s_diag.abs_max_shift_14) s_diag.abs_max_shift_14 = abs14;
-    if (abs16 > s_diag.abs_max_shift_16) s_diag.abs_max_shift_16 = abs16;
-}
 
 void inmp441_deinit(void)
 {
@@ -63,7 +28,6 @@ void inmp441_deinit(void)
 
     s_sample_rate = 0;
     s_bits_per_sample = 0;
-    memset(&s_diag, 0, sizeof(s_diag));
     s_hp_prev_x = 0;
     s_hp_prev_y = 0;
     s_active_slot_index = -1;
@@ -127,7 +91,7 @@ esp_err_t inmp441_init(uint32_t sample_rate, uint8_t bits_per_sample)
     return ESP_OK;
 }
 
-esp_err_t inmp441_read_raw(int32_t *buffer, size_t sample_count, size_t *samples_read, TickType_t timeout_ticks)
+esp_err_t inmp441_read(int16_t *buffer, size_t sample_count, size_t *samples_read, TickType_t timeout_ticks)
 {
     static int32_t raw_buf[INMP441_RAW_CHUNK_FRAMES * 2];
     size_t total_samples = 0;
@@ -181,48 +145,7 @@ esp_err_t inmp441_read_raw(int32_t *buffer, size_t sample_count, size_t *samples
         }
 
         for (size_t i = 0; i < got_frames; i++) {
-            int32_t raw = raw_buf[2 * i + (s_active_slot_index > 0 ? 1 : 0)];
-            inmp441_update_diag_from_raw(raw, total_samples == 0 && i == 0);
-            buffer[total_samples++] = raw;
-        }
-
-        if (got_frames == 0) {
-            break;
-        }
-    }
-
-    if (samples_read != NULL) {
-        *samples_read = total_samples;
-    }
-    return ESP_OK;
-}
-
-esp_err_t inmp441_read(int16_t *buffer, size_t sample_count, size_t *samples_read, TickType_t timeout_ticks)
-{
-    static int32_t raw_buf[INMP441_RAW_CHUNK_FRAMES];
-    size_t total_samples = 0;
-
-    if (buffer == NULL || sample_count == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    while (total_samples < sample_count) {
-        size_t got_samples = 0;
-        size_t want_samples = sample_count - total_samples;
-        if (want_samples > INMP441_RAW_CHUNK_FRAMES) {
-            want_samples = INMP441_RAW_CHUNK_FRAMES;
-        }
-
-        esp_err_t ret = inmp441_read_raw(raw_buf, want_samples, &got_samples, timeout_ticks);
-        if (ret != ESP_OK) {
-            if (samples_read != NULL) {
-                *samples_read = total_samples;
-            }
-            return ret;
-        }
-
-        for (size_t i = 0; i < got_samples; i++) {
-            int32_t scaled = raw_buf[i] >> 16;
+            int32_t scaled = raw_buf[2 * i + (s_active_slot_index > 0 ? 1 : 0)] >> 16;
             int32_t hp = scaled - s_hp_prev_x + ((s_hp_prev_y * 63) / 64);
             s_hp_prev_x = scaled;
             s_hp_prev_y = hp;
@@ -235,7 +158,7 @@ esp_err_t inmp441_read(int16_t *buffer, size_t sample_count, size_t *samples_rea
             buffer[total_samples++] = (int16_t)scaled;
         }
 
-        if (got_samples == 0) {
+        if (got_frames == 0) {
             break;
         }
     }
@@ -244,12 +167,4 @@ esp_err_t inmp441_read(int16_t *buffer, size_t sample_count, size_t *samples_rea
         *samples_read = total_samples;
     }
     return ESP_OK;
-}
-
-void inmp441_get_diag(inmp441_diag_t *diag)
-{
-    if (diag == NULL) {
-        return;
-    }
-    *diag = s_diag;
 }

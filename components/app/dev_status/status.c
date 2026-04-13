@@ -1,5 +1,4 @@
 #include "headfile.h"
-#include "esp_crt_bundle.h"
 
 /**
  * @brief 设置北京时区
@@ -145,75 +144,3 @@ void fetch_weather(void)
 
     esp_http_client_cleanup(client);
 }
-
-// 心知天气接口
-/*
-void fetch_weather(void)
-{
-    http_buf_len = 0;
-    memset(http_buf, 0, sizeof(http_buf));
-
-    // 替换为你的 API Key 和城市
-    // location 可以用城市拼音，如 shenzhen/beijing/guangzhou
-    // 或用经纬度：location=113.92:22.53
-    const char *url = "https://api.seniverse.com/v3/weather/now.json"
-                      "?key=SWEwZCGgkIQ3PlQ3D" // 密钥
-                      "&location=huizhou"   // 城市
-                      "&language=zh-Hans"   // 语言
-                      "&unit=c";
-
-    esp_http_client_config_t cfg = {
-        .url             = url,
-        .event_handler   = http_event_handler,
-        .timeout_ms      = 10000,
-        .transport_type  = HTTP_TRANSPORT_OVER_SSL,
-        .skip_cert_common_name_check = true,
-        .crt_bundle_attach = esp_crt_bundle_attach,  // ← 加这行，使用内置证书束
-    };
-
-    esp_http_client_handle_t client = esp_http_client_init(&cfg);
-    if (client == NULL) 
-    {                          // ← 加这个判断
-        ESP_LOGE("WEATHER", "HTTP client 初始化失败，检查URL");
-        return;
-    }
-
-    esp_err_t err = esp_http_client_perform(client);
-
-    if (err == ESP_OK) {
-        // 解析JSON
-        cJSON *root = cJSON_Parse(http_buf);
-        if (root) {
-            cJSON *results = cJSON_GetObjectItem(root, "results");
-            if (results && cJSON_IsArray(results)) {
-                cJSON *first  = cJSON_GetArrayItem(results, 0);
-                cJSON *loc    = cJSON_GetObjectItem(first, "location");
-                cJSON *now    = cJSON_GetObjectItem(first, "now");
-                cJSON *upd    = cJSON_GetObjectItem(first, "last_update");
-
-                if (loc && now) {
-                    strncpy(weather_data.city,
-                            cJSON_GetObjectItem(loc, "name")->valuestring, 31);
-                    strncpy(weather_data.weather,
-                            cJSON_GetObjectItem(now, "text")->valuestring, 31);
-                    weather_data.temp_now =
-                            atoi(cJSON_GetObjectItem(now, "temperature")->valuestring);
-                    if (upd)
-                        strncpy(weather_data.update_time, upd->valuestring, 31);
-
-                    ESP_LOGI("WEATHER", "城市:%s 天气:%s 温度:%d°C",
-                             weather_data.city,
-                             weather_data.weather,
-                             weather_data.temp_now);
-                }
-            }
-            cJSON_Delete(root);
-        }
-    } else {
-        ESP_LOGW("WEATHER", "天气获取失败: %s", esp_err_to_name(err));
-    }
-
-    esp_http_client_cleanup(client);
-}
-
-*/

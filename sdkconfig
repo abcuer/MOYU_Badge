@@ -2119,13 +2119,6 @@ CONFIG_AUDIO_ENCODER_SBC_SUPPORT=y
 CONFIG_AUDIO_ENCODER_LC3_SUPPORT=y
 # end of Audio Encoder Configuration
 # end of Audio Codec Configuration
-
-#
-# ESP WebSocket client
-#
-CONFIG_ESP_WS_CLIENT_ENABLE_DYNAMIC_BUFFER=y
-# CONFIG_ESP_WS_CLIENT_SEPARATE_TX_LOCK is not set
-# end of ESP WebSocket client
 # end of Component config
 
 # CONFIG_IDF_EXPERIMENTAL_FEATURES is not set
