@@ -9,6 +9,8 @@
 #define MAX98357_DMA_DESC_NUM        8
 #define MAX98357_DMA_FRAME_NUM       512
 #define MAX98357_MAX_INPUT_PCM_BYTES 4096
+#define MAX98357_WRITE_CHUNK_BYTES   2048
+#define MAX98357_PRELOAD_SILENCE_BYTES 512
 #define MAX98357_I2S_PORT            I2S_NUM_1
 
 static const char *TAG = "max98357";
@@ -60,11 +62,16 @@ static esp_err_t max98357_write_all(const uint8_t *data, size_t len, TickType_t 
 
     while (total_written < len) {
         size_t bytes_written = 0;
-        esp_err_t ret = i2s_channel_write(s_tx_handle, data + total_written, len - total_written,
+        size_t write_len = len - total_written;
+        if (write_len > MAX98357_WRITE_CHUNK_BYTES) {
+            write_len = MAX98357_WRITE_CHUNK_BYTES;
+        }
+
+        esp_err_t ret = i2s_channel_write(s_tx_handle, data + total_written, write_len,
                                           &bytes_written, timeout_ticks);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "i2s_channel_write failed ret=%d written=%lu remain=%lu",
-                     ret, (unsigned long)bytes_written, (unsigned long)(len - total_written));
+                     ret, (unsigned long)bytes_written, (unsigned long)write_len);
             return ret;
         }
         if (bytes_written == 0) {
@@ -158,6 +165,15 @@ esp_err_t max98357_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per
         max98357_set_idle_gpio_levels();
         xSemaphoreGive(mutex);
         return ret;
+    }
+
+    {
+        static const uint8_t preload_silence[MAX98357_PRELOAD_SILENCE_BYTES] = {0};
+        size_t bytes_loaded = 0;
+        ret = i2s_channel_preload_data(s_tx_handle, preload_silence, sizeof(preload_silence), &bytes_loaded);
+        if (ret != ESP_OK) {
+            ESP_LOGW(TAG, "preload silence failed: %d", ret);
+        }
     }
 
     ret = i2s_channel_enable(s_tx_handle);

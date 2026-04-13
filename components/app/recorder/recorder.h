@@ -24,7 +24,6 @@ recorder_state_t recorder_get_state(void);
 uint16_t recorder_get_peak_level(void);
 uint32_t recorder_get_recorded_ms(void);
 bool recorder_is_active(void);
-const char *recorder_get_play_variant_name(void);
 
 #ifdef __cplusplus
 }

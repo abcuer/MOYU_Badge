@@ -1172,7 +1172,7 @@ void draw_recorder_ui(u8g2_t *u8g2)
         state_text = "Recording";
         hint_text = "Short: Stop && Play";
     } else if (state == RECORDER_STATE_PLAYING) {
-        state_text = recorder_get_play_variant_name();
+        state_text = "Playing";
         hint_text = "Short: Stop";
     } else if (state == RECORDER_STATE_ERROR) {
         state_text = "Error";
