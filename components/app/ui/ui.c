@@ -1154,48 +1154,68 @@ void draw_blood_ui(u8g2_t *u8g2)
 void draw_recorder_ui(u8g2_t *u8g2)
 {
     recorder_state_t state = recorder_get_state();
-    uint16_t peak = recorder_get_peak_level();
+    uint16_t raw_peak = recorder_get_peak_level(); // 假设这是原始值
     uint32_t recorded_ms = recorder_get_recorded_ms();
-    int bar_w = (peak * 120) / 32767;
-    char buf[24];
-    const char *state_text = "Standby";
-    const char *hint_text = "Short:Rec Long:Menu";
-
-    if (bar_w < 0) {
-        bar_w = 0;
-    }
-    if (bar_w > 120) {
-        bar_w = 120;
-    }
-
-    if (state == RECORDER_STATE_RECORDING) {
-        state_text = "Recording";
-        hint_text = "Short: Stop && Play";
-    } else if (state == RECORDER_STATE_PLAYING) {
-        state_text = "Playing";
-        hint_text = "Short: Stop";
-    } else if (state == RECORDER_STATE_ERROR) {
-        state_text = "Error";
-        hint_text = "Check mic / I2S";
-    }
-
+    
+    // --- 逻辑修正：计算响度进度条宽度 ---
+    // 1. 取绝对值（防止负数导致逻辑崩溃）
+    int32_t abs_peak = (int32_t)raw_peak;
+    if (abs_peak < 0) abs_peak = -abs_peak;
+    
+    // 2. 计算映射 (最大宽度 108，留出边框内部间隙)
+    // 假设 32767 是最大量程
+    int bar_w = (abs_peak * 108) / 32767;
+    
+    // 3. 严格限程：必须在 0 到 108 之间
+    if (bar_w < 0) bar_w = 0;
+    if (bar_w > 108) bar_w = 108;
+    
+    char buf[20];
     u8g2_ClearBuffer(u8g2);
+
+    // --- 1. 顶部标题 ---
     u8g2_SetFont(u8g2, u8g2_font_6x12_tf);
-    u8g2_DrawStr(u8g2, 22, 10, "- RECORDER -");
-    u8g2_DrawHLine(u8g2, 0, 12, 128);
+    u8g2_DrawStr(u8g2, 40, 10, "RECORDER"); 
 
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    snprintf(buf, sizeof(buf), "State: %s", state_text);
-    u8g2_DrawStr(u8g2, 4, 25, buf);
-    snprintf(buf, sizeof(buf), "Time : %lus", (unsigned long)(recorded_ms / 1000U));
-    u8g2_DrawStr(u8g2, 4, 37, buf);
-
-    u8g2_DrawFrame(u8g2, 4, 42, 120, 10);
-    if (bar_w > 0) {
-        u8g2_DrawBox(u8g2, 4, 42, bar_w, 10);
+    // --- 2. 状态与时间 ---
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf); 
+    if (state == RECORDER_STATE_RECORDING) {
+        if ((recorded_ms / 500) % 2 == 0) {
+            u8g2_DrawDisc(u8g2, 8, 22, 3, U8G2_DRAW_ALL); 
+        }
+        u8g2_DrawStr(u8g2, 16, 26, "RECORD");
+    } else if (state == RECORDER_STATE_PLAYING) {
+        u8g2_DrawTriangle(u8g2, 6, 20, 6, 26, 11, 23);
+        u8g2_DrawStr(u8g2, 16, 26, "PLAYING");
+    } else {
+        u8g2_DrawStr(u8g2, 8, 26, "IDLE");
     }
 
-    u8g2_DrawStr(u8g2, 10, 61, hint_text);
+    u8g2_SetFont(u8g2, u8g2_font_7x14_tf); 
+    uint16_t sec = recorded_ms / 1000;
+    snprintf(buf, sizeof(buf), "%02d:%02d", (sec % 3600) / 60, sec % 60);
+    u8g2_DrawStr(u8g2, 85, 26, buf); // 稍微往右移一点
+
+    // --- 3. 电平表 (响度显示) ---
+    // 绘制装饰刻度
+    for(int i=0; i<=112; i+=28) {
+        u8g2_DrawVLine(u8g2, 8+i, 34, 2);
+    }
+    // 绘制外框 (左上角 x=8, y=37, 宽=112, 高=7)
+    u8g2_DrawFrame(u8g2, 8, 37, 112, 7); 
+    
+    // 绘制内部实心条 (起始 x 应该比框大1，宽度最大不能超过框宽-2)
+    if (bar_w > 0) {
+        // x=10 起始，确保不会压到边框线
+        u8g2_DrawBox(u8g2, 10, 39, bar_w, 3); 
+    }
+
+    // --- 4. 底部提示 ---
+    u8g2_SetFont(u8g2, u8g2_font_6x12_tf); 
+    const char *hint = "Short:REC Long:Menu";
+    int width = u8g2_GetStrWidth(u8g2, hint);
+    u8g2_DrawStr(u8g2, (128 - width) / 2, 60, hint); 
+
     u8g2_SendBuffer(u8g2);
 }
 

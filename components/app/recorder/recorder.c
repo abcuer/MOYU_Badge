@@ -10,11 +10,11 @@
 #include "inmp441.h"
 #include "max98357.h"
 
-#define RECORDER_SAMPLE_RATE           16000
+#define RECORDER_SAMPLE_RATE           24000
 #define RECORDER_BITS_PER_SAMPLE       16
 #define RECORDER_CHANNELS              1
 #define RECORDER_CHUNK_SAMPLES         320
-#define RECORDER_MAX_SECONDS           10
+#define RECORDER_MAX_SECONDS           90
 #define RECORDER_GAIN_SHIFT            1
 #define RECORDER_TASK_STACK            4096
 #define RECORDER_TASK_PRIORITY         5
@@ -132,8 +132,7 @@ static void recorder_task(void *arg)
             if (s_play_offset >= s_recorded_samples) {
                 max98357_deinit();
                 speaker_ready = false;
-                s_play_offset = 0;
-                s_peak_level = 0;
+                recorder_reset_internal();
                 s_state = RECORDER_STATE_IDLE;
                 vTaskDelay(pdMS_TO_TICKS(10));
                 continue;
