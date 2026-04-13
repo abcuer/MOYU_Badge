@@ -6,13 +6,6 @@
 #include "esp_log.h"
 #include "freertos/semphr.h"
 
-#define MAX98357_DMA_DESC_NUM        8
-#define MAX98357_DMA_FRAME_NUM       512
-#define MAX98357_MAX_INPUT_PCM_BYTES 4096
-#define MAX98357_WRITE_CHUNK_BYTES   2048
-#define MAX98357_PRELOAD_SILENCE_BYTES 512
-#define MAX98357_I2S_PORT            I2S_NUM_1
-
 static const char *TAG = "max98357";
 
 static i2s_chan_handle_t s_tx_handle = NULL;

@@ -9,6 +9,12 @@
 // 飞机大战模式设置
 #define MAX_BULLETS 25
 #define MAX_ENEMIES 3
+#define SETTING_VOLUME_STEP      1
+#define SETTING_TILT_TRIGGER_DEG 12.0f
+#define SETTING_TILT_NEUTRAL_DEG 5.0f
+#define RADIO_VOLUME_STEP        1
+#define RADIO_TILT_TRIGGER_DEG   10.0f
+#define RADIO_TILT_NEUTRAL_DEG   4.0f
 
 typedef enum {
     MODE_CLOCK = 0,
@@ -156,10 +162,10 @@ void radio_ui_toggle_volume_edit(void);
 void radio_ui_exit_volume_edit(bool save);
 void radio_ui_update_volume_tilt(float roll);
 
-extern int menu_layer;
-extern ui_mode_e mode;
-extern ui_mode_e selected_game;
-extern DinoGame_t dino_game;
-extern AirGame_t air_game;
+extern int ui_menu_layer;
+extern ui_mode_e ui_mode;
+extern ui_mode_e ui_selected_game;
+extern DinoGame_t ui_dino_game;
+extern AirGame_t ui_air_game;
 
 #endif

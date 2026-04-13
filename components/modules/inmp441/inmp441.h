@@ -11,9 +11,13 @@
 extern "C" {
 #endif
 
-#define INMP441_SD_PIN  20
-#define INMP441_SCK_PIN 21
-#define INMP441_WS_PIN  47
+#define INMP441_SD_PIN           20
+#define INMP441_SCK_PIN          21
+#define INMP441_WS_PIN           47
+#define INMP441_DMA_DESC_NUM     6
+#define INMP441_DMA_FRAME_NUM    256
+#define INMP441_I2S_PORT         I2S_NUM_0
+#define INMP441_RAW_CHUNK_FRAMES 128U
 
 esp_err_t inmp441_init(uint32_t sample_rate, uint8_t bits_per_sample);
 void inmp441_deinit(void);

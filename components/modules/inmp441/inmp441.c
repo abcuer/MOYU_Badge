@@ -4,11 +4,6 @@
 #include "driver/i2s_std.h"
 #include "esp_log.h"
 
-#define INMP441_DMA_DESC_NUM      6
-#define INMP441_DMA_FRAME_NUM     256
-#define INMP441_I2S_PORT          I2S_NUM_0
-#define INMP441_RAW_CHUNK_FRAMES  128
-
 static const char *TAG = "inmp441";
 
 static i2s_chan_handle_t s_rx_handle = NULL;

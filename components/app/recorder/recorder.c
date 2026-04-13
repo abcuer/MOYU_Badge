@@ -1,6 +1,7 @@
 #include "recorder.h"
 
 #include <limits.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_heap_caps.h"
@@ -10,17 +11,6 @@
 #include "inmp441.h"
 #include "max98357.h"
 
-#define RECORDER_SAMPLE_RATE           24000
-#define RECORDER_BITS_PER_SAMPLE       16
-#define RECORDER_CHANNELS              1
-#define RECORDER_CHUNK_SAMPLES         320
-#define RECORDER_MAX_SECONDS           90
-#define RECORDER_GAIN_SHIFT            1
-#define RECORDER_TASK_STACK            4096
-#define RECORDER_TASK_PRIORITY         5
-#define RECORDER_IO_TIMEOUT_MS         500
-#define RECORDER_SPEAKER_WARMUP_MS     20
-
 static const char *TAG = "recorder";
 
 static TaskHandle_t s_recorder_task = NULL;
@@ -28,9 +18,32 @@ static volatile bool s_active = false;
 static volatile recorder_state_t s_state = RECORDER_STATE_IDLE;
 static volatile uint16_t s_peak_level = 0;
 static volatile size_t s_recorded_samples = 0;
+static volatile bool s_task_idle = true;
 static int16_t *s_record_buffer = NULL;
 static size_t s_record_capacity = 0;
 static size_t s_play_offset = 0;
+
+static void recorder_reset_internal(void);
+static void recorder_release_buffer(void);
+
+static void recorder_start_recording(void)
+{
+    recorder_reset_internal();
+    s_state = RECORDER_STATE_RECORDING;
+}
+
+static void recorder_start_playback(void)
+{
+    if (s_recorded_samples == 0) {
+        s_state = RECORDER_STATE_IDLE;
+        s_play_offset = 0;
+        s_peak_level = 0;
+        return;
+    }
+
+    s_play_offset = 0;
+    s_state = RECORDER_STATE_PLAYING;
+}
 
 static uint16_t recorder_calculate_peak(const int16_t *samples, size_t count)
 {
@@ -83,6 +96,18 @@ static esp_err_t recorder_ensure_buffer(void)
     return ESP_OK;
 }
 
+static void recorder_release_buffer(void)
+{
+    if (s_record_buffer == NULL) {
+        s_record_capacity = 0;
+        return;
+    }
+
+    free(s_record_buffer);
+    s_record_buffer = NULL;
+    s_record_capacity = 0;
+}
+
 static void recorder_reset_internal(void)
 {
     s_recorded_samples = 0;
@@ -108,9 +133,12 @@ static void recorder_task(void *arg)
                 max98357_deinit();
                 speaker_ready = false;
             }
+            s_task_idle = true;
             vTaskDelay(pdMS_TO_TICKS(30));
             continue;
         }
+
+        s_task_idle = false;
 
         if (s_state == RECORDER_STATE_PLAYING) {
             if (mic_ready) {
@@ -132,7 +160,8 @@ static void recorder_task(void *arg)
             if (s_play_offset >= s_recorded_samples) {
                 max98357_deinit();
                 speaker_ready = false;
-                recorder_reset_internal();
+                s_play_offset = 0;
+                s_peak_level = 0;
                 s_state = RECORDER_STATE_IDLE;
                 vTaskDelay(pdMS_TO_TICKS(10));
                 continue;
@@ -205,7 +234,7 @@ static void recorder_task(void *arg)
 
         if (copy_samples < samples_read || s_recorded_samples >= s_record_capacity) {
             s_play_offset = 0;
-            s_state = (s_recorded_samples > 0) ? RECORDER_STATE_PLAYING : RECORDER_STATE_IDLE;
+            s_state = RECORDER_STATE_IDLE;
         }
     }
 }
@@ -234,7 +263,13 @@ void recorder_enter_mode(void)
 void recorder_exit_mode(void)
 {
     s_active = false;
+
+    for (uint8_t i = 0; i < 20 && !s_task_idle; i++) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
     recorder_reset_internal();
+    recorder_release_buffer();
     s_state = RECORDER_STATE_IDLE;
 }
 
@@ -245,20 +280,20 @@ void recorder_handle_short_press(void)
     }
 
     if (s_state == RECORDER_STATE_RECORDING) {
-        s_play_offset = 0;
-        s_state = (s_recorded_samples > 0) ? RECORDER_STATE_PLAYING : RECORDER_STATE_IDLE;
+        recorder_start_playback();
         return;
     }
 
-    if (s_state == RECORDER_STATE_PLAYING) {
-        s_play_offset = 0;
-        s_peak_level = 0;
-        s_state = RECORDER_STATE_IDLE;
+    recorder_start_recording();
+}
+
+void recorder_handle_long_press(void)
+{
+    if (!s_active || s_state == RECORDER_STATE_RECORDING) {
         return;
     }
 
-    recorder_reset_internal();
-    s_state = RECORDER_STATE_RECORDING;
+    recorder_start_playback();
 }
 
 void recorder_stop_and_reset(void)
@@ -287,4 +322,9 @@ uint32_t recorder_get_recorded_ms(void)
 bool recorder_is_active(void)
 {
     return s_active;
+}
+
+bool recorder_has_recording(void)
+{
+    return s_recorded_samples > 0;
 }

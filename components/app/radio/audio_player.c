@@ -20,39 +20,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "max98357.h"
-#include "settings.h"
 #include "ws2812.h"
-
-typedef struct {
-    int metaint;
-    int audio_bytes_left;
-    int metadata_bytes_left;
-    bool expect_metadata_len;
-} icy_filter_t;
-
-static const char *TAG = "audio_player";
-
-// 音量设置
-#define AUDIO_DEFAULT_VOLUME_PERCENT         SETTINGS_DEFAULT_VOLUME
-
-#define AUDIO_MAX_CONSECUTIVE_DECODE_ERRORS  24
-#define AUDIO_MAX_CONSECUTIVE_EMPTY_READS    300
-#define AUDIO_HTTP_CHUNK_SIZE                1024
-#define AUDIO_I2S_WRITE_TIMEOUT_MS           300
-#define AUDIO_PCM_BUFFER_SIZE                8192
-#define AUDIO_PCM_PREBUFFER_SIZE             (256 * 1024)
-#define AUDIO_PCM_READ_CHUNK_SIZE            4096
-#define AUDIO_PCM_RESUME_SIZE                (192 * 1024)
-#define AUDIO_PCM_RING_SIZE                  (1024 * 1024)
-#define AUDIO_PCM_POLL_MS                    10
-#define AUDIO_PCM_UNDERRUN_GRACE_MS          800
-#define AUDIO_RAW_BUFFER_SIZE                8192
-#define AUDIO_RETRY_DELAY_MS                 2000
-#define AUDIO_TASK_PRIORITY                  5
-#define AUDIO_TASK_STACK_SIZE                12288
-#define AUDIO_LED_TASK_STACK_SIZE            3072
-#define AUDIO_LED_UPDATE_MS                  40
-#define AUDIO_FADE_IN_SAMPLES                2048
 
 static const audio_station_t s_stations[] = {
     { "星河音乐", "http://lhttp.qingting.fm/live/20210755/64k.mp3" },
@@ -65,7 +33,7 @@ static const audio_station_t s_stations[] = {
     { "欧美音乐88.7", "http://lhttp.qingting.fm/live/15318703/64k.mp3" },
 };
 
-TaskHandle_t s_audio_task = NULL;
+static TaskHandle_t s_audio_task_handle = NULL;
 static TaskHandle_t s_audio_writer_task = NULL;
 static portMUX_TYPE s_audio_lock = portMUX_INITIALIZER_UNLOCKED;
 static volatile audio_state_t s_audio_state = AUDIO_STATE_IDLE;
@@ -89,6 +57,8 @@ static uint8_t s_pcm_bits_per_sample = 0;
 static bool s_pcm_ring_in_psram = false;
 static int16_t s_audio_lp_prev_l = 0;
 static int16_t s_audio_lp_prev_r = 0;
+static int16_t s_audio_prev_sample_l = 0;
+static int16_t s_audio_prev_sample_r = 0;
 static size_t s_audio_fade_samples_left = 0;
 
 static bool audio_request_changed(uint32_t token, size_t station_index);
@@ -99,8 +69,11 @@ static void audio_led_task(void *arg);
 static void audio_led_show_rainbow_breathing(uint32_t ms_now);
 static void audio_led_hsv_to_rgb(uint16_t hue, uint8_t sat, uint8_t val,
                                  uint8_t *r, uint8_t *g, uint8_t *b);
+static void audio_declick_output(uint8_t *pcm_data, size_t pcm_len, uint8_t channels);
 static void audio_smooth_output(uint8_t *pcm_data, size_t pcm_len, uint8_t channels);
 static void audio_apply_fade_in(uint8_t *pcm_data, size_t pcm_len, uint8_t channels);
+
+#define AUDIO_CLICK_DELTA_THRESHOLD 12000
 
 static size_t audio_pcm_prebuffer_target(void)
 {
@@ -161,7 +134,7 @@ static void audio_set_state(audio_state_t state)
     portEXIT_CRITICAL(&s_audio_lock);
 
     if (old_state != state) {
-        ESP_LOGI(TAG, "state: %s -> %s", audio_state_to_string(old_state), audio_state_to_string(state));
+        ESP_LOGI(AUDIO_PLAYER_TAG, "state: %s -> %s", audio_state_to_string(old_state), audio_state_to_string(state));
     }
 }
 
@@ -223,8 +196,8 @@ static bool audio_wifi_is_ready(void)
 
 static void audio_notify_task(void)
 {
-    if (s_audio_task != NULL) {
-        xTaskNotifyGive(s_audio_task);
+    if (s_audio_task_handle != NULL) {
+        xTaskNotifyGive(s_audio_task_handle);
     }
 }
 
@@ -244,6 +217,8 @@ static void audio_pcm_reset(void)
     s_pcm_bits_per_sample = 0;
     s_audio_lp_prev_l = 0;
     s_audio_lp_prev_r = 0;
+    s_audio_prev_sample_l = 0;
+    s_audio_prev_sample_r = 0;
     s_audio_fade_samples_left = AUDIO_FADE_IN_SAMPLES;
     xSemaphoreGive(s_pcm_mutex);
 }
@@ -327,7 +302,7 @@ static esp_err_t audio_pcm_ensure_allocated(void)
         return ESP_OK;
     }
 
-    ESP_LOGE(TAG, "alloc pcm ring failed, free=%u, largest=%u",
+    ESP_LOGE(AUDIO_PLAYER_TAG, "alloc pcm ring failed, free=%u, largest=%u",
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
     return ESP_ERR_NO_MEM;
@@ -364,6 +339,8 @@ static void audio_pcm_release(void)
     s_pcm_bits_per_sample = 0;
     s_audio_lp_prev_l = 0;
     s_audio_lp_prev_r = 0;
+    s_audio_prev_sample_l = 0;
+    s_audio_prev_sample_r = 0;
     s_audio_fade_samples_left = AUDIO_FADE_IN_SAMPLES;
     xSemaphoreGive(s_pcm_mutex);
 
@@ -455,7 +432,7 @@ static esp_err_t audio_pcm_push(const uint8_t *src, size_t len, uint32_t token, 
         return ESP_ERR_INVALID_ARG;
     }
 
-    ESP_RETURN_ON_ERROR(audio_pcm_ensure_allocated(), TAG, "alloc pcm ring failed");
+    ESP_RETURN_ON_ERROR(audio_pcm_ensure_allocated(), AUDIO_PLAYER_TAG, "alloc pcm ring failed");
 
     while (copied < len) {
         bool wrote = false;
@@ -489,6 +466,48 @@ static esp_err_t audio_pcm_push(const uint8_t *src, size_t len, uint32_t token, 
     }
 
     return ESP_OK;
+}
+
+static void audio_declick_output(uint8_t *pcm_data, size_t pcm_len, uint8_t channels)
+{
+    if (pcm_data == NULL || pcm_len < sizeof(int16_t) || (channels != 1 && channels != 2)) {
+        return;
+    }
+
+    int16_t *samples = (int16_t *)pcm_data;
+    size_t sample_count = pcm_len / sizeof(int16_t);
+
+    if (channels == 1) {
+        for (size_t i = 0; i < sample_count; i++) {
+            int32_t current = samples[i];
+            int32_t delta = current - s_audio_prev_sample_l;
+            if (delta > AUDIO_CLICK_DELTA_THRESHOLD || delta < -AUDIO_CLICK_DELTA_THRESHOLD) {
+                current = s_audio_prev_sample_l + (delta / 4);
+            }
+            samples[i] = (int16_t)current;
+            s_audio_prev_sample_l = (int16_t)current;
+        }
+        return;
+    }
+
+    for (size_t i = 0; i + 1 < sample_count; i += 2) {
+        int32_t current_l = samples[i];
+        int32_t current_r = samples[i + 1];
+        int32_t delta_l = current_l - s_audio_prev_sample_l;
+        int32_t delta_r = current_r - s_audio_prev_sample_r;
+
+        if (delta_l > AUDIO_CLICK_DELTA_THRESHOLD || delta_l < -AUDIO_CLICK_DELTA_THRESHOLD) {
+            current_l = s_audio_prev_sample_l + (delta_l / 4);
+        }
+        if (delta_r > AUDIO_CLICK_DELTA_THRESHOLD || delta_r < -AUDIO_CLICK_DELTA_THRESHOLD) {
+            current_r = s_audio_prev_sample_r + (delta_r / 4);
+        }
+
+        samples[i] = (int16_t)current_l;
+        samples[i + 1] = (int16_t)current_r;
+        s_audio_prev_sample_l = (int16_t)current_l;
+        s_audio_prev_sample_r = (int16_t)current_r;
+    }
 }
 
 static void audio_apply_volume(uint8_t *pcm_data, size_t pcm_len, uint8_t volume_percent)
@@ -565,6 +584,7 @@ static esp_err_t audio_output_write(uint8_t *pcm_data, size_t pcm_len, uint8_t c
         return ESP_OK;
     }
 
+    audio_declick_output(pcm_data, pcm_len, channels);
     audio_smooth_output(pcm_data, pcm_len, channels);
     audio_apply_volume(pcm_data, pcm_len, audio_get_volume_locked());
     audio_apply_fade_in(pcm_data, pcm_len, channels);
@@ -775,14 +795,14 @@ static void audio_writer_task(void *arg)
     }
 }
 
-static void icy_filter_reset(icy_filter_t *filter, int metaint)
+static void icy_filter_reset(audio_icy_filter_t *filter, int metaint)
 {
     memset(filter, 0, sizeof(*filter));
     filter->metaint = metaint;
     filter->audio_bytes_left = metaint;
 }
 
-static size_t icy_filter_append(icy_filter_t *filter, const uint8_t *input, size_t input_len,
+static size_t icy_filter_append(audio_icy_filter_t *filter, const uint8_t *input, size_t input_len,
                                 uint8_t *output, size_t output_cap)
 {
     if (filter->metaint <= 0) {
@@ -836,7 +856,7 @@ static size_t icy_filter_append(icy_filter_t *filter, const uint8_t *input, size
     return out_pos;
 }
 
-static esp_http_client_handle_t audio_stream_open(const char *url, icy_filter_t *filter)
+static esp_http_client_handle_t audio_stream_open(const char *url, audio_icy_filter_t *filter)
 {
     esp_http_client_config_t http_cfg = {
         .url = url,
@@ -859,7 +879,7 @@ static esp_http_client_handle_t audio_stream_open(const char *url, icy_filter_t 
     }
 
     if (esp_http_client_fetch_headers(client) < 0) {
-        ESP_LOGW(TAG, "fetch headers failed");
+        ESP_LOGW(AUDIO_PLAYER_TAG, "fetch headers failed");
     }
 
     char *metaint_value = NULL;
@@ -882,8 +902,8 @@ static void audio_stream_close(esp_http_client_handle_t client)
 static esp_err_t audio_decoder_prepare(esp_audio_simple_dec_handle_t *decoder)
 {
     if (!s_decoder_registered) {
-        ESP_RETURN_ON_ERROR(esp_audio_dec_register_default(), TAG, "register decoders failed");
-        ESP_RETURN_ON_ERROR(esp_audio_simple_dec_register_default(), TAG, "register simple decoders failed");
+        ESP_RETURN_ON_ERROR(esp_audio_dec_register_default(), AUDIO_PLAYER_TAG, "register decoders failed");
+        ESP_RETURN_ON_ERROR(esp_audio_simple_dec_register_default(), AUDIO_PLAYER_TAG, "register simple decoders failed");
         s_decoder_registered = true;
     }
 
@@ -894,9 +914,9 @@ static esp_err_t audio_decoder_prepare(esp_audio_simple_dec_handle_t *decoder)
             .cfg_size = 0,
             .use_frame_dec = false,
         };
-        ESP_RETURN_ON_ERROR(esp_audio_simple_dec_open(&dec_cfg, decoder), TAG, "open mp3 decoder failed");
+        ESP_RETURN_ON_ERROR(esp_audio_simple_dec_open(&dec_cfg, decoder), AUDIO_PLAYER_TAG, "open mp3 decoder failed");
     } else {
-        ESP_RETURN_ON_ERROR(esp_audio_simple_dec_reset(*decoder), TAG, "reset mp3 decoder failed");
+        ESP_RETURN_ON_ERROR(esp_audio_simple_dec_reset(*decoder), AUDIO_PLAYER_TAG, "reset mp3 decoder failed");
     }
     return ESP_OK;
 }
@@ -917,13 +937,13 @@ static esp_err_t audio_play_station(size_t station_index, uint32_t token)
 
     esp_audio_simple_dec_handle_t decoder = NULL;
     esp_http_client_handle_t client = NULL;
-    icy_filter_t filter = {0};
+    audio_icy_filter_t filter = {0};
     esp_err_t ret = ESP_FAIL;
     size_t raw_len = 0;
     int consecutive_decode_errors = 0;
     int consecutive_empty_reads = 0;
 
-    ESP_RETURN_ON_ERROR(audio_decoder_prepare(&decoder), TAG, "decoder setup failed");
+    ESP_RETURN_ON_ERROR(audio_decoder_prepare(&decoder), AUDIO_PLAYER_TAG, "decoder setup failed");
     audio_pcm_reset_or_release();
 
     client = audio_stream_open(s_stations[station_index].url, &filter);
@@ -1017,7 +1037,7 @@ static esp_err_t audio_play_station(size_t station_index, uint32_t token)
 
                 audio_pcm_set_format(info.sample_rate, info.channel, info.bits_per_sample);
                 ESP_GOTO_ON_ERROR(audio_pcm_push(out_frame.buffer, out_frame.decoded_size, token, station_index),
-                                  cleanup, TAG, "pcm buffer push failed");
+                                  cleanup, AUDIO_PLAYER_TAG, "pcm buffer push failed");
             }
 
             if (raw.consumed > 0 || out_frame.decoded_size > 0) {
@@ -1109,8 +1129,8 @@ void audio_player_init(void)
         xTaskCreate(audio_writer_task, "audio_writer", AUDIO_TASK_STACK_SIZE, NULL,
                     AUDIO_TASK_PRIORITY + 1, &s_audio_writer_task);
     }
-    if (s_audio_task == NULL) {
-        xTaskCreate(audio_task, "audio_task", AUDIO_TASK_STACK_SIZE, NULL, AUDIO_TASK_PRIORITY, &s_audio_task);
+    if (s_audio_task_handle == NULL) {
+        xTaskCreate(audio_task, "audio_task", AUDIO_TASK_STACK_SIZE, NULL, AUDIO_TASK_PRIORITY, &s_audio_task_handle);
     }
 }
 

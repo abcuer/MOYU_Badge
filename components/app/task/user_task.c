@@ -7,21 +7,21 @@ static volatile bool s_sensor_power_sync_required = false;
 
 static bool sensor_mode_needs_imu(void)
 {
-    return mode == MODE_BALL ||
-           mode == MODE_DINO ||
-           mode == MODE_PLANE ||
-           (mode == MODE_SETTING && setting_ui_is_volume_editing()) ||
-           (mode == MODE_RADIO && radio_ui_is_volume_editing());
+    return ui_mode == MODE_BALL ||
+           ui_mode == MODE_DINO ||
+           ui_mode == MODE_PLANE ||
+           (ui_mode == MODE_SETTING && setting_ui_is_volume_editing()) ||
+           (ui_mode == MODE_RADIO && radio_ui_is_volume_editing());
 }
 
 static bool sensor_mode_needs_bmp280(void)
 {
-    return mode == MODE_CLOCK;
+    return ui_mode == MODE_CLOCK;
 }
 
 static bool sensor_mode_needs_max30102(void)
 {
-    return mode == MODE_BLOOD;
+    return ui_mode == MODE_BLOOD;
 }
 
 static uint32_t oled_get_refresh_interval_ms(void)
@@ -30,7 +30,7 @@ static uint32_t oled_get_refresh_interval_ms(void)
         return OLED_SLOW_REFRESH_MS;
     }
 
-    switch (mode)
+    switch (ui_mode)
     {
         case MODE_CLOCK:
             return OLED_SLOW_REFRESH_MS;
@@ -143,9 +143,9 @@ void start_sensor_task(void *pvParameters)
 
         if (need_imu) {
             imu_get_angle(&gyroAccel, &euler_angle, 20.0f / 1000.0f);
-            if (mode == MODE_SETTING) {
+            if (ui_mode == MODE_SETTING) {
                 setting_ui_update_volume_tilt(euler_angle.roll);
-            } else if (mode == MODE_RADIO) {
+            } else if (ui_mode == MODE_RADIO) {
                 radio_ui_update_volume_tilt(euler_angle.roll);
             }
             vTaskDelay(pdMS_TO_TICKS(20));
@@ -219,11 +219,11 @@ void start_oled_task(void *pvParameters)
 
         if (in_select)
         {
-            draw_select_ui(&u8g2, selected_game);
+            draw_select_ui(&u8g2, ui_selected_game);
         }
         else
         {
-            switch (mode)
+            switch (ui_mode)
             {
                 case MODE_CLOCK:    draw_main_clock_ui(&u8g2); break;
                 case MODE_RECORDER: draw_recorder_ui(&u8g2);   break;

@@ -1,24 +1,12 @@
 #include "imu.h"
-#include "math.h"
 
-/* ============================ 宏定义与全局变量 ================================== */
-/* =============================== 变量定义 ===================================== */
-
-/* 弧度转角度常数 */
-float RtA = 57.2957795f;   // 弧度 -> 角度
-// 陀螺仪量程初始化为 +-2000度/秒: 1/(65536 / 4000) = 0.03051756*2
-// float Gyro_G = 0.03051756f * 2;
-float Gyro_G = 4000.0 / 65536;   // 度/s
-// 度每秒转换为弧度每秒: 2*0.03051756 * 0.0174533f = 0.0005326*2
-// float Gyro_Gr = 0.0005326f * 2;
-float Gyro_Gr = 4000.0 / 65536 / 180 * 3.1415926;   // 弧度/s
-#define squa(Sq) (((float)Sq) * ((float)Sq))        /* 平方计算宏 */
+#include <math.h>
 
 /**
  * @description: 快速平方根倒数算法 1/sqrt(num)
  * @param {float} number
  */
-static float Q_rsqrt(float number)
+static float imu_fast_rsqrt(float number)
 {
     long        i;
     float       x2, y;
@@ -44,95 +32,103 @@ void imu_get_angle(GyroAccel_Struct  *gyroAccel,
                         EulerAngle_Struct *eulerAngle,
                         float              dt)
 {
-    volatile struct V
-    {
+    typedef struct {
         float x;
         float y;
         float z;
-    } Gravity, Acc, Gyro, AccGravity;
+    } imu_vector3_t;
 
-    static struct V          GyroIntegError = {0};
-    static float             KpDef          = 0.8f;     // 比例增益 (加速计修正权重)
-    static float             KiDef          = 0.0003f;  // 积分增益 (误差补偿)
-    static Quaternion_Struct NumQ           = {1, 0, 0, 0};
-    float                    q0_t, q1_t, q2_t, q3_t;
-    // float NormAcc;
-    float NormQuat;
-    float HalfTime = dt * 0.5f;
+    imu_vector3_t gravity = {0};
+    imu_vector3_t acc = {0};
+    imu_vector3_t gyro = {0};
+    imu_vector3_t acc_gravity = {0};
+    static imu_vector3_t s_gyro_integral_error = {0};
+    static float s_kp_gain = 0.8f;
+    static float s_ki_gain = 0.0003f;
+    static imu_quaternion_t s_quaternion = {1.0f, 0.0f, 0.0f, 0.0f};
+    float q0_delta;
+    float q1_delta;
+    float q2_delta;
+    float q3_delta;
+    float quat_norm;
+    float half_dt = dt * 0.5f;
+    float vec_x_z;
+    float vec_y_z;
+    float vec_z_z;
+    float yaw_rate_deg;
 
     mpu_get_data(gyroAccel);
 
     // 提取四元数对应的重力分量（姿态阵的第三行）
-    Gravity.x = 2 * (NumQ.q1 * NumQ.q3 - NumQ.q0 * NumQ.q2);
-    Gravity.y = 2 * (NumQ.q0 * NumQ.q1 + NumQ.q2 * NumQ.q3);
-    Gravity.z = 1 - 2 * (NumQ.q1 * NumQ.q1 + NumQ.q2 * NumQ.q2);
+    gravity.x = 2.0f * (s_quaternion.q1 * s_quaternion.q3 - s_quaternion.q0 * s_quaternion.q2);
+    gravity.y = 2.0f * (s_quaternion.q0 * s_quaternion.q1 + s_quaternion.q2 * s_quaternion.q3);
+    gravity.z = 1.0f - 2.0f * (s_quaternion.q1 * s_quaternion.q1 + s_quaternion.q2 * s_quaternion.q2);
 
     // 加速度计数据归一化
-    NormQuat = Q_rsqrt(squa(gyroAccel->acc.x) +
-                       squa(gyroAccel->acc.y) +
-                       squa(gyroAccel->acc.z));
+    quat_norm = imu_fast_rsqrt(imu_squaref(gyroAccel->acc.x) +
+                               imu_squaref(gyroAccel->acc.y) +
+                               imu_squaref(gyroAccel->acc.z));
 
-    Acc.x = gyroAccel->acc.x * NormQuat;
-    Acc.y = gyroAccel->acc.y * NormQuat;
-    Acc.z = gyroAccel->acc.z * NormQuat;
+    acc.x = gyroAccel->acc.x * quat_norm;
+    acc.y = gyroAccel->acc.y * quat_norm;
+    acc.z = gyroAccel->acc.z * quat_norm;
 
     // 通过向量外积计算加速度计测得的重力与估计重力的误差
-    AccGravity.x = (Acc.y * Gravity.z - Acc.z * Gravity.y);
-    AccGravity.y = (Acc.z * Gravity.x - Acc.x * Gravity.z);
-    AccGravity.z = (Acc.x * Gravity.y - Acc.y * Gravity.x);
+    acc_gravity.x = (acc.y * gravity.z - acc.z * gravity.y);
+    acc_gravity.y = (acc.z * gravity.x - acc.x * gravity.z);
+    acc_gravity.z = (acc.x * gravity.y - acc.y * gravity.x);
 
     // 对误差进行积分，补偿陀螺仪的零偏
-    GyroIntegError.x += AccGravity.x * KiDef;
-    GyroIntegError.y += AccGravity.y * KiDef;
-    GyroIntegError.z += AccGravity.z * KiDef;
+    s_gyro_integral_error.x += acc_gravity.x * s_ki_gain;
+    s_gyro_integral_error.y += acc_gravity.y * s_ki_gain;
+    s_gyro_integral_error.z += acc_gravity.z * s_ki_gain;
 
     // 使用PI补偿后的角速度更新四元数
-    Gyro.x = gyroAccel->gyro.x * Gyro_Gr + KpDef * AccGravity.x + GyroIntegError.x;
-    Gyro.y = gyroAccel->gyro.y * Gyro_Gr + KpDef * AccGravity.y + GyroIntegError.y;
-    Gyro.z = gyroAccel->gyro.z * Gyro_Gr + KpDef * AccGravity.z + GyroIntegError.z;
+    gyro.x = gyroAccel->gyro.x * IMU_GYRO_SCALE_RADPS + s_kp_gain * acc_gravity.x + s_gyro_integral_error.x;
+    gyro.y = gyroAccel->gyro.y * IMU_GYRO_SCALE_RADPS + s_kp_gain * acc_gravity.y + s_gyro_integral_error.y;
+    gyro.z = gyroAccel->gyro.z * IMU_GYRO_SCALE_RADPS + s_kp_gain * acc_gravity.z + s_gyro_integral_error.z;
 
     // 四元数一阶微分方程更新
-    q0_t = (-NumQ.q1 * Gyro.x - NumQ.q2 * Gyro.y - NumQ.q3 * Gyro.z) * HalfTime;
-    q1_t = (NumQ.q0 * Gyro.x - NumQ.q3 * Gyro.y + NumQ.q2 * Gyro.z) * HalfTime;
-    q2_t = (NumQ.q3 * Gyro.x + NumQ.q0 * Gyro.y - NumQ.q1 * Gyro.z) * HalfTime;
-    q3_t = (-NumQ.q2 * Gyro.x + NumQ.q1 * Gyro.y + NumQ.q0 * Gyro.z) * HalfTime;
+    q0_delta = (-s_quaternion.q1 * gyro.x - s_quaternion.q2 * gyro.y - s_quaternion.q3 * gyro.z) * half_dt;
+    q1_delta = (s_quaternion.q0 * gyro.x - s_quaternion.q3 * gyro.y + s_quaternion.q2 * gyro.z) * half_dt;
+    q2_delta = (s_quaternion.q3 * gyro.x + s_quaternion.q0 * gyro.y - s_quaternion.q1 * gyro.z) * half_dt;
+    q3_delta = (-s_quaternion.q2 * gyro.x + s_quaternion.q1 * gyro.y + s_quaternion.q0 * gyro.z) * half_dt;
 
-    NumQ.q0 += q0_t;
-    NumQ.q1 += q1_t;
-    NumQ.q2 += q2_t;
-    NumQ.q3 += q3_t;
+    s_quaternion.q0 += q0_delta;
+    s_quaternion.q1 += q1_delta;
+    s_quaternion.q2 += q2_delta;
+    s_quaternion.q3 += q3_delta;
 
     // 四元数单位化归一化
-    NormQuat = Q_rsqrt(squa(NumQ.q0) + squa(NumQ.q1) + squa(NumQ.q2) + squa(NumQ.q3));
-    NumQ.q0 *= NormQuat;
-    NumQ.q1 *= NormQuat;
-    NumQ.q2 *= NormQuat;
-    NumQ.q3 *= NormQuat;
+    quat_norm = imu_fast_rsqrt(imu_squaref(s_quaternion.q0) +
+                               imu_squaref(s_quaternion.q1) +
+                               imu_squaref(s_quaternion.q2) +
+                               imu_squaref(s_quaternion.q3));
+    s_quaternion.q0 *= quat_norm;
+    s_quaternion.q1 *= quat_norm;
+    s_quaternion.q2 *= quat_norm;
+    s_quaternion.q3 *= quat_norm;
 
     /* 计算姿态矩阵中的Z轴分量，用于求取欧拉角 */
-    float vecxZ = 2 * NumQ.q0 * NumQ.q2 - 2 * NumQ.q1 * NumQ.q3;     /* 矩阵第(3,1)项 */
-    float vecyZ = 2 * NumQ.q2 * NumQ.q3 + 2 * NumQ.q0 * NumQ.q1;     /* 矩阵第(3,2)项 */
-    float veczZ = 1 - 2 * NumQ.q1 * NumQ.q1 - 2 * NumQ.q2 * NumQ.q2; /* 矩阵第(3,3)项 */
+    vec_x_z = 2.0f * s_quaternion.q0 * s_quaternion.q2 - 2.0f * s_quaternion.q1 * s_quaternion.q3;
+    vec_y_z = 2.0f * s_quaternion.q2 * s_quaternion.q3 + 2.0f * s_quaternion.q0 * s_quaternion.q1;
+    vec_z_z = 1.0f - 2.0f * s_quaternion.q1 * s_quaternion.q1 - 2.0f * s_quaternion.q2 * s_quaternion.q2;
 
-    if (vecxZ > 1.0f) {
-        vecxZ = 1.0f;
-    } else if (vecxZ < -1.0f) {
-        vecxZ = -1.0f;
+    if (vec_x_z > 1.0f) {
+        vec_x_z = 1.0f;
+    } else if (vec_x_z < -1.0f) {
+        vec_x_z = -1.0f;
     }
 
     // 航向角计算：Z轴陀螺仪直接积分（由于加速度计无法纠正Z轴漂移）
-    float yaw_G = gyroAccel->gyro.z * Gyro_G; 
-    if((yaw_G > 0.5f) || (yaw_G < -0.5f)) // 设置死区过滤微小抖动
-    {
-        eulerAngle->yaw += yaw_G * dt;
+    yaw_rate_deg = gyroAccel->gyro.z * IMU_GYRO_SCALE_DPS;
+    if ((yaw_rate_deg > 0.5f) || (yaw_rate_deg < -0.5f)) {
+        eulerAngle->yaw += yaw_rate_deg * dt;
     }
 
     // 俯仰角计算（Pitch）
-    eulerAngle->pitch = asin(vecxZ) * RtA;
+    eulerAngle->pitch = asinf(vec_x_z) * IMU_RAD_TO_DEG;
 
     // 横滚角计算（Roll）
-    eulerAngle->roll = atan2f(vecyZ, veczZ) * RtA;
-
+    eulerAngle->roll = atan2f(vec_y_z, vec_z_z) * IMU_RAD_TO_DEG;
 }
-
-/* ====================== 结束 ================================== */

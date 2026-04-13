@@ -22,17 +22,10 @@
 
 #include "ui.h"
 
-#define TAG "apcfg"
-#define INDEX_HTML_PATH "/spiffs/apcfg.html"
-#define APCFG_BIT BIT0
-#define DNS_PORT 53
-#define DNS_MAX_PACKET_SIZE 512
-#define SAVED_WIFI_CONNECT_TIMEOUT_MS 40000
-
-static char *index_html = NULL;
-static EventGroupHandle_t apcfg_event = NULL;
-static char current_ssid[32];
-static char current_password[64];
+static char *s_index_html = NULL;
+static EventGroupHandle_t s_apcfg_event = NULL;
+static char s_current_ssid[32];
+static char s_current_password[64];
 
 static TaskHandle_t s_dns_task_handle = NULL;
 static TaskHandle_t s_saved_wifi_timeout_task = NULL;
@@ -43,19 +36,21 @@ static volatile bool s_saved_wifi_connected = false;
 
 static const uint8_t s_ap_ip[4] = {192, 168, 100, 1};
 
-static char *initi_web_page_buffer(void);
-static void wifi_scan_finish_handle(int numbers, wifi_ap_record_t *ap_records);
-static void ws_receive_handle(uint8_t *payload, int len);
-static void ap_wifi_task(void *param);
+static char *ap_wifi_load_web_page_buffer(void);
+static void ap_wifi_handle_scan_finished(int numbers, wifi_ap_record_t *ap_records);
+static void ap_wifi_handle_ws_receive(uint8_t *payload, int len);
+static void ap_wifi_event_task(void *param);
 static void captive_dns_start(void);
 static void captive_dns_stop(void);
 static void captive_dns_task(void *param);
 static int captive_dns_question_len(const uint8_t *packet, int len);
 static int captive_dns_build_response(const uint8_t *request, int request_len,
                                       uint8_t *response, int response_cap);
-static void saved_wifi_timeout_task(void *param);
+static void ap_wifi_saved_wifi_timeout_task(void *param);
+static void ap_wifi_handle_state_change(WIFI_STATE state);
+static bool ap_wifi_load_from_nvs(char *ssid, size_t ssid_len, char *password, size_t pwd_len);
 
-static char *initi_web_page_buffer(void)
+static char *ap_wifi_load_web_page_buffer(void)
 {
     esp_vfs_spiffs_conf_t conf = {
         .base_path = "/spiffs",
@@ -67,8 +62,8 @@ static char *initi_web_page_buffer(void)
     ESP_ERROR_CHECK(esp_vfs_spiffs_register(&conf));
 
     struct stat st;
-    if (stat(INDEX_HTML_PATH, &st) != 0) {
-        ESP_LOGE(TAG, "apcfg.html not found");
+    if (stat(AP_WIFI_INDEX_HTML_PATH, &st) != 0) {
+        ESP_LOGE(AP_WIFI_TAG, "apcfg.html not found");
         return NULL;
     }
 
@@ -78,7 +73,7 @@ static char *initi_web_page_buffer(void)
     }
 
     memset(page, 0, st.st_size + 1);
-    FILE *fp = fopen(INDEX_HTML_PATH, "r");
+    FILE *fp = fopen(AP_WIFI_INDEX_HTML_PATH, "r");
     if (fp == NULL) {
         free(page);
         return NULL;
@@ -87,7 +82,7 @@ static char *initi_web_page_buffer(void)
     if (fread(page, st.st_size, 1, fp) == 0) {
         free(page);
         fclose(fp);
-        ESP_LOGE(TAG, "fread failed");
+        ESP_LOGE(AP_WIFI_TAG, "fread failed");
         return NULL;
     }
 
@@ -95,7 +90,7 @@ static char *initi_web_page_buffer(void)
     return page;
 }
 
-static void wifi_scan_finish_handle(int numbers, wifi_ap_record_t *ap_records)
+static void ap_wifi_handle_scan_finished(int numbers, wifi_ap_record_t *ap_records)
 {
     cJSON *root = cJSON_CreateObject();
     cJSON *wifilist_js = cJSON_AddArrayToObject(root, "wifi_list");
@@ -109,19 +104,19 @@ static void wifi_scan_finish_handle(int numbers, wifi_ap_record_t *ap_records)
     }
 
     char *data = cJSON_Print(root);
-    ESP_LOGI(TAG, "WS send:%s", data);
+    ESP_LOGI(AP_WIFI_TAG, "WS send:%s", data);
     web_ws_send((uint8_t *)data, strlen(data));
     cJSON_free(data);
     cJSON_Delete(root);
 }
 
-static void ws_receive_handle(uint8_t *payload, int len)
+static void ap_wifi_handle_ws_receive(uint8_t *payload, int len)
 {
     cJSON *root = cJSON_Parse((char *)payload);
     (void)len;
 
     if (root == NULL) {
-        ESP_LOGE(TAG, "Receive invalid json");
+        ESP_LOGE(AP_WIFI_TAG, "Receive invalid json");
         return;
     }
 
@@ -132,7 +127,7 @@ static void ws_receive_handle(uint8_t *payload, int len)
     if (scan_js != NULL) {
         char *scan_value = cJSON_GetStringValue(scan_js);
         if (scan_value != NULL && strcmp(scan_value, "start") == 0) {
-            wifi_manager_scan(wifi_scan_finish_handle);
+            wifi_manager_scan(ap_wifi_handle_scan_finished);
         }
     }
 
@@ -140,12 +135,12 @@ static void ws_receive_handle(uint8_t *payload, int len)
         char *ssid = cJSON_GetStringValue(ssid_js);
         char *password = cJSON_GetStringValue(password_js);
         if (ssid != NULL && password != NULL) {
-            snprintf(current_ssid, sizeof(current_ssid), "%s", ssid);
-            snprintf(current_password, sizeof(current_password), "%s", password);
+            snprintf(s_current_ssid, sizeof(s_current_ssid), "%s", ssid);
+            snprintf(s_current_password, sizeof(s_current_password), "%s", password);
             save_wifi_to_nvs(ssid, password);
             reset_sync_ui_timer();
-            ESP_LOGI(TAG, "Receive ssid:%s,password:%s,now stop http server", current_ssid, current_password);
-            xEventGroupSetBits(apcfg_event, APCFG_BIT);
+            ESP_LOGI(AP_WIFI_TAG, "Receive ssid:%s,password:%s,now stop http server", s_current_ssid, s_current_password);
+            xEventGroupSetBits(s_apcfg_event, AP_WIFI_CONFIG_BIT);
         }
     }
 
@@ -216,8 +211,8 @@ static void captive_dns_task(void *param)
 {
     (void)param;
 
-    uint8_t rx_buf[DNS_MAX_PACKET_SIZE];
-    uint8_t tx_buf[DNS_MAX_PACKET_SIZE];
+    uint8_t rx_buf[AP_WIFI_DNS_MAX_PACKET_SIZE];
+    uint8_t tx_buf[AP_WIFI_DNS_MAX_PACKET_SIZE];
 
     while (s_dns_running) {
         struct sockaddr_in from_addr;
@@ -245,18 +240,18 @@ static void captive_dns_start(void)
 
     s_dns_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (s_dns_sock < 0) {
-        ESP_LOGE(TAG, "create dns socket failed");
+        ESP_LOGE(AP_WIFI_TAG, "create dns socket failed");
         return;
     }
 
     struct sockaddr_in bind_addr = {
         .sin_family = AF_INET,
-        .sin_port = htons(DNS_PORT),
+        .sin_port = htons(AP_WIFI_DNS_PORT),
         .sin_addr.s_addr = htonl(INADDR_ANY),
     };
 
     if (bind(s_dns_sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) != 0) {
-        ESP_LOGE(TAG, "bind dns socket failed");
+        ESP_LOGE(AP_WIFI_TAG, "bind dns socket failed");
         closesocket(s_dns_sock);
         s_dns_sock = -1;
         return;
@@ -290,27 +285,27 @@ static void captive_dns_stop(void)
     }
 }
 
-static void ap_wifi_task(void *param)
+static void ap_wifi_event_task(void *param)
 {
     (void)param;
 
     while (1) {
-        EventBits_t ev = xEventGroupWaitBits(apcfg_event, APCFG_BIT, pdTRUE, pdFALSE, pdMS_TO_TICKS(10 * 1000));
-        if (ev & APCFG_BIT) {
+        EventBits_t ev = xEventGroupWaitBits(s_apcfg_event, AP_WIFI_CONFIG_BIT, pdTRUE, pdFALSE, pdMS_TO_TICKS(10 * 1000));
+        if (ev & AP_WIFI_CONFIG_BIT) {
             s_ap_config_active = false;
             captive_dns_stop();
             web_ws_stop();
-            wifi_manager_connect(current_ssid, current_password);
+            wifi_manager_connect(s_current_ssid, s_current_password);
         }
     }
 }
 
 void ap_wifi_init(p_wifi_state_callback f)
 {
-    index_html = initi_web_page_buffer();
+    s_index_html = ap_wifi_load_web_page_buffer();
     wifi_manager_init(f);
-    apcfg_event = xEventGroupCreate();
-    xTaskCreatePinnedToCore(ap_wifi_task, "apcfg", 4096, NULL, 2, NULL, 1);
+    s_apcfg_event = xEventGroupCreate();
+    xTaskCreatePinnedToCore(ap_wifi_event_task, "apcfg", 4096, NULL, 2, NULL, 1);
 }
 
 void ap_wifi_set(const char *ssid, const char *password)
@@ -324,20 +319,18 @@ void ap_wifi_apcfg(bool enable)
         s_ap_config_active = true;
         wifi_manager_ap();
         ws_cfg_t ws = {
-            .html_code = index_html,
-            .receive_fn = ws_receive_handle,
+            .html_code = s_index_html,
+            .receive_fn = ap_wifi_handle_ws_receive,
         };
         web_ws_start(&ws);
         captive_dns_start();
     }
 }
 
-#define WIFI_NAMESPACE "storage"
+static char s_saved_ssid[32] = {0};
+static char s_saved_password[64] = {0};
 
-char saved_ssid[32] = {0};
-char saved_pwd[64] = {0};
-
-static void wifi_state_callback(WIFI_STATE state)
+static void ap_wifi_handle_state_change(WIFI_STATE state)
 {
     if (state == WIFI_STATE_CONNECTED) {
         s_saved_wifi_connected = true;
@@ -348,14 +341,14 @@ static void wifi_state_callback(WIFI_STATE state)
     }
 }
 
-static void saved_wifi_timeout_task(void *param)
+static void ap_wifi_saved_wifi_timeout_task(void *param)
 {
     (void)param;
 
-    vTaskDelay(pdMS_TO_TICKS(SAVED_WIFI_CONNECT_TIMEOUT_MS));
+    vTaskDelay(pdMS_TO_TICKS(AP_WIFI_SAVED_CONNECT_TIMEOUT_MS));
 
     if (!s_saved_wifi_connected && !s_ap_config_active) {
-        ESP_LOGW(TAG, "Saved Wi-Fi connect timeout, switching to AP config mode");
+        ESP_LOGW(AP_WIFI_TAG, "Saved Wi-Fi connect timeout, switching to AP config mode");
         ap_wifi_apcfg(true);
     }
 
@@ -366,20 +359,20 @@ static void saved_wifi_timeout_task(void *param)
 void save_wifi_to_nvs(const char *ssid, const char *password)
 {
     nvs_handle_t my_handle;
-    esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &my_handle);
+    esp_err_t err = nvs_open(AP_WIFI_NVS_NAMESPACE, NVS_READWRITE, &my_handle);
     if (err == ESP_OK) {
-        nvs_set_str(my_handle, "ssid", ssid);
-        nvs_set_str(my_handle, "password", password);
+        nvs_set_str(my_handle, AP_WIFI_NVS_KEY_SSID, ssid);
+        nvs_set_str(my_handle, AP_WIFI_NVS_KEY_PASSWORD, password);
         nvs_commit(my_handle);
         nvs_close(my_handle);
         ESP_LOGI("NVS", "Wi-Fi info saved to NVS");
     }
 }
 
-bool load_wifi_from_nvs(char *ssid, size_t ssid_len, char *password, size_t pwd_len)
+static bool ap_wifi_load_from_nvs(char *ssid, size_t ssid_len, char *password, size_t pwd_len)
 {
     nvs_handle_t my_handle;
-    esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READONLY, &my_handle);
+    esp_err_t err = nvs_open(AP_WIFI_NVS_NAMESPACE, NVS_READONLY, &my_handle);
     if (err != ESP_OK) {
         return false;
     }
@@ -387,13 +380,13 @@ bool load_wifi_from_nvs(char *ssid, size_t ssid_len, char *password, size_t pwd_
     size_t s_len = ssid_len;
     size_t p_len = pwd_len;
 
-    err = nvs_get_str(my_handle, "ssid", ssid, &s_len);
+    err = nvs_get_str(my_handle, AP_WIFI_NVS_KEY_SSID, ssid, &s_len);
     if (err != ESP_OK) {
         nvs_close(my_handle);
         return false;
     }
 
-    err = nvs_get_str(my_handle, "password", password, &p_len);
+    err = nvs_get_str(my_handle, AP_WIFI_NVS_KEY_PASSWORD, password, &p_len);
     nvs_close(my_handle);
 
     return (err == ESP_OK);
@@ -401,21 +394,21 @@ bool load_wifi_from_nvs(char *ssid, size_t ssid_len, char *password, size_t pwd_
 
 void ap_wifi_go(void)
 {
-    bool has_saved_wifi = load_wifi_from_nvs(saved_ssid, sizeof(saved_ssid), saved_pwd, sizeof(saved_pwd));
+    bool has_saved_wifi = ap_wifi_load_from_nvs(s_saved_ssid, sizeof(s_saved_ssid), s_saved_password, sizeof(s_saved_password));
     s_saved_wifi_connected = false;
     s_ap_config_active = false;
 
     if (has_saved_wifi) {
-        ESP_LOGI("MAIN", "Found saved Wi-Fi config: %s, trying auto connect...", saved_ssid);
-        ap_wifi_init(wifi_state_callback);
-        wifi_manager_connect(saved_ssid, saved_pwd);
+        ESP_LOGI("MAIN", "Found saved Wi-Fi config: %s, trying auto connect...", s_saved_ssid);
+        ap_wifi_init(ap_wifi_handle_state_change);
+        wifi_manager_connect(s_saved_ssid, s_saved_password);
         if (s_saved_wifi_timeout_task == NULL) {
-            xTaskCreatePinnedToCore(saved_wifi_timeout_task, "wifi_timeout", 3072, NULL, 2,
+            xTaskCreatePinnedToCore(ap_wifi_saved_wifi_timeout_task, "wifi_timeout", 3072, NULL, 2,
                                     &s_saved_wifi_timeout_task, 1);
         }
     } else {
         ESP_LOGI("MAIN", "No Wi-Fi config found, starting AP captive portal...");
-        ap_wifi_init(wifi_state_callback);
+        ap_wifi_init(ap_wifi_handle_state_change);
         ap_wifi_apcfg(true);
     }
 }
@@ -423,10 +416,10 @@ void ap_wifi_go(void)
 void erase_wifi_from_nvs(void)
 {
     nvs_handle_t my_handle;
-    esp_err_t err = nvs_open(WIFI_NAMESPACE, NVS_READWRITE, &my_handle);
+    esp_err_t err = nvs_open(AP_WIFI_NVS_NAMESPACE, NVS_READWRITE, &my_handle);
     if (err == ESP_OK) {
-        nvs_erase_key(my_handle, "ssid");
-        nvs_erase_key(my_handle, "password");
+        nvs_erase_key(my_handle, AP_WIFI_NVS_KEY_SSID);
+        nvs_erase_key(my_handle, AP_WIFI_NVS_KEY_PASSWORD);
         nvs_commit(my_handle);
         nvs_close(my_handle);
         ESP_LOGI("NVS", "Saved Wi-Fi config erased");

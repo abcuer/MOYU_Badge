@@ -1,5 +1,8 @@
 #ifndef _WS_SERVER_H_
 #define _WS_SERVER_H_
+
+#include <stdint.h>
+
 #include "esp_err.h"
 
 //ws接收到的处理回调函数

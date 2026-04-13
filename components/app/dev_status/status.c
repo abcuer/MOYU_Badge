@@ -65,17 +65,17 @@ void fetch_time(void)
 WeatherData_t weather_data = {0};
 
 // HTTP响应缓冲
-static char http_buf[2048];
-static int  http_buf_len = 0;
+static char s_http_buf[2048];
+static int s_http_buf_len = 0;
 
 static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 {
     if (evt->event_id == HTTP_EVENT_ON_DATA) {
         int copy_len = evt->data_len;
-        if (http_buf_len + copy_len < sizeof(http_buf)) {
-            memcpy(http_buf + http_buf_len, evt->data, copy_len);
-            http_buf_len += copy_len;
-            http_buf[http_buf_len] = '\0';
+        if (s_http_buf_len + copy_len < sizeof(s_http_buf)) {
+            memcpy(s_http_buf + s_http_buf_len, evt->data, copy_len);
+            s_http_buf_len += copy_len;
+            s_http_buf[s_http_buf_len] = '\0';
         }
     }
     return ESP_OK;
@@ -83,8 +83,8 @@ static esp_err_t http_event_handler(esp_http_client_event_t *evt)
 
 void fetch_weather(void)
 {
-    http_buf_len = 0;
-    memset(http_buf, 0, sizeof(http_buf));
+    s_http_buf_len = 0;
+    memset(s_http_buf, 0, sizeof(s_http_buf));
 
     // Open-Meteo 不需要API Key
     const char *url = "http://api.open-meteo.com/v1/forecast"
@@ -108,7 +108,7 @@ void fetch_weather(void)
     esp_err_t err = esp_http_client_perform(client);
 
     if (err == ESP_OK) {
-        cJSON *root = cJSON_Parse(http_buf);
+        cJSON *root = cJSON_Parse(s_http_buf);
         if (root) {
             cJSON *current = cJSON_GetObjectItem(root, "current");
             if (current) {

@@ -5,6 +5,8 @@
 
 #define WS2812_PIN 48
 #define WS2812_NUM 1
+// 亮度调节
+#define WS2812_BRIGHTNESS_SCALE 40U
 
 void ws2812_init(void);
 void ws2812_flash(uint8_t r, uint8_t g, uint8_t b);

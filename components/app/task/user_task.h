@@ -1,8 +1,14 @@
 #ifndef __USER_TASK_H
 #define __USER_TASK_H
 
+#include <stdbool.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
+#include "freertos/task.h"
+
 #define WIFI_CONNECT_BIT    BIT0
-#define TIME_SYNC_BIT       BIT1 
+#define TIME_SYNC_BIT       BIT1
 
 #define SENSOR_PERIOD   20
 #define OLED_PERIOD     30
@@ -19,7 +25,9 @@ void start_oled_task(void *pvParameters);
 void start_key_task(void *pvParameters);
 void sensor_request_power_sync(void);
 
-extern EventGroupHandle_t  wifi_ev;
+extern TaskHandle_t sensor_task_handle;
+extern TaskHandle_t sync_task_handle;
+extern EventGroupHandle_t wifi_ev;
 extern volatile bool is_first_sync_done;
 extern volatile bool has_started_ap_config;
 

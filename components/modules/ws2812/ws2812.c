@@ -33,9 +33,13 @@ void ws2812_init(void)
 
 void ws2812_flash(uint8_t r, uint8_t g, uint8_t b)
 {
+    uint8_t scaled_r = (uint8_t)(((uint16_t)r * WS2812_BRIGHTNESS_SCALE) / 255U);
+    uint8_t scaled_g = (uint8_t)(((uint16_t)g * WS2812_BRIGHTNESS_SCALE) / 255U);
+    uint8_t scaled_b = (uint8_t)(((uint16_t)b * WS2812_BRIGHTNESS_SCALE) / 255U);
+
     for(uint8_t i = 0; i < WS2812_NUM; i++)
     {
-        ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, i, r, g, b));
+        ESP_ERROR_CHECK(led_strip_set_pixel(led_strip, i, scaled_r, scaled_g, scaled_b));
     }
     ESP_ERROR_CHECK(led_strip_refresh(led_strip));
 }

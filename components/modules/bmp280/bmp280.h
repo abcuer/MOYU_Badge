@@ -13,6 +13,8 @@
 #define BMP280_REG_CALIB    0x88  // 补偿参数起始地址
 #define BMP280_REG_CTRL     0xF4
 #define BMP280_REG_DATA     0xF7
+#define BMP280_CTRL_SLEEP   0x24
+#define BMP280_CTRL_FORCED  0x25
 
 // 补偿参数结构体
 typedef struct {

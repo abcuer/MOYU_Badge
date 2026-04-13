@@ -1,19 +1,15 @@
 
 #include "headfile.h"
-      
-ui_mode_e mode = MODE_CLOCK;
-ui_mode_e selected_game = MODE_BALL;
-static bool setting_wifi_reset_armed = false;
+
+ui_mode_e ui_mode = MODE_CLOCK;
+ui_mode_e ui_selected_game = MODE_BALL;
+static bool s_setting_wifi_reset_armed = false;
 static setting_item_t s_setting_item = SETTING_ITEM_INFO;
 
 static setting_page_t s_setting_page = SETTING_PAGE_MENU;
 static bool s_setting_volume_editing = false;
 static uint8_t s_setting_preview_volume = SETTINGS_DEFAULT_VOLUME;
 static int8_t s_setting_tilt_state = 0;
-
-#define SETTING_VOLUME_STEP          1
-#define SETTING_TILT_TRIGGER_DEG     12.0f
-#define SETTING_TILT_NEUTRAL_DEG     5.0f
 
 static void setting_ui_apply_preview_volume(void)
 {
@@ -23,7 +19,7 @@ static void setting_ui_apply_preview_volume(void)
 
 void setting_ui_reset_state(void)
 {
-    setting_wifi_reset_armed = false;
+    s_setting_wifi_reset_armed = false;
     s_setting_item = SETTING_ITEM_INFO;
     s_setting_page = SETTING_PAGE_MENU;
     s_setting_volume_editing = false;
@@ -37,7 +33,7 @@ bool setting_ui_handle_short_press(void)
         return true;
     }
 
-    setting_wifi_reset_armed = false;
+    s_setting_wifi_reset_armed = false;
     s_setting_item = (setting_item_t)((s_setting_item + 1) % 4);
     return true;
 }
@@ -144,26 +140,22 @@ void setting_ui_update_volume_tilt(float roll)
 
 void setting_ui_set_wifi_reset_armed(bool armed)
 {
-    setting_wifi_reset_armed = armed;
+    s_setting_wifi_reset_armed = armed;
 }
 
 bool setting_ui_is_wifi_reset_armed(void)
 {
-    return setting_wifi_reset_armed;
+    return s_setting_wifi_reset_armed;
 }
 
 void setting_ui_toggle_wifi_reset_armed(void)
 {
-    setting_wifi_reset_armed = !setting_wifi_reset_armed;
+    s_setting_wifi_reset_armed = !s_setting_wifi_reset_armed;
 }
 
 static bool s_radio_volume_editing = false;
 static uint8_t s_radio_preview_volume = SETTINGS_DEFAULT_VOLUME;
 static int8_t s_radio_tilt_state = 0;
-
-#define RADIO_VOLUME_STEP 1
-#define RADIO_TILT_TRIGGER_DEG 10.0f
-#define RADIO_TILT_NEUTRAL_DEG 4.0f
 
 static void radio_ui_apply_preview_volume(void)
 {
@@ -281,43 +273,43 @@ void draw_syncing_ui(u8g2_t *u8g2)
         // --- 1. 标题栏 (高度压缩至 13px) ---
         u8g2_SetFont(u8g2, u8g2_font_wqy12_t_gb2312);
         u8g2_DrawBox(u8g2, 0, 0, 128, 13);           // 矩形高度减小
-        u8g2_SetDrawColor(u8g2, 0); 
+        u8g2_SetDrawColor(u8g2, 0);
         const char* title = "Wi-Fi 配置";
         str_width = u8g2_GetUTF8Width(u8g2, title);
         u8g2_DrawUTF8(u8g2, (screen_width - str_width) / 2, 11, title); // 基线移至 11
-        u8g2_SetDrawColor(u8g2, 1); 
+        u8g2_SetDrawColor(u8g2, 1);
 
         // --- 2. 信息展示区 (使用 12px 字体替代 14px 以节省空间) ---
         // 如果 7x14 导致溢出，建议这里也统一用 wqy12
-        u8g2_SetFont(u8g2, u8g2_font_wqy12_t_gb2312); 
+        u8g2_SetFont(u8g2, u8g2_font_wqy12_t_gb2312);
 
         // SSID 渲染 (位置上移)
         snprintf(buf, sizeof(buf), "ID: %s", wifi_manager_get_ap_ssid());
         str_width = u8g2_GetUTF8Width(u8g2, buf);
-        u8g2_DrawUTF8(u8g2, (screen_width - str_width) / 2, 28, buf); 
+        u8g2_DrawUTF8(u8g2, (screen_width - str_width) / 2, 28, buf);
 
         // Password 渲染 (紧贴 SSID)
         snprintf(buf, sizeof(buf), "PW: %s", wifi_manager_get_ap_password());
         str_width = u8g2_GetUTF8Width(u8g2, buf);
-        u8g2_DrawUTF8(u8g2, (screen_width - str_width) / 2, 42, buf); 
+        u8g2_DrawUTF8(u8g2, (screen_width - str_width) / 2, 42, buf);
 
         // --- 3. 底部修饰与提示 (严格控制在 64 像素内) ---
         u8g2_DrawHLine(u8g2, 24, 46, 80);            // 分隔线位置调至 46
-        
+
         // 提示语：确保基线在 58-60，给汉字底部留出 4 像素空间
         const char* hint = "请设备连接热点";          // 缩短字数减少宽度压力
         str_width = u8g2_GetUTF8Width(u8g2, hint);
-        u8g2_DrawUTF8(u8g2, (screen_width - str_width) / 2, 60, hint); 
+        u8g2_DrawUTF8(u8g2, (screen_width - str_width) / 2, 60, hint);
 
         u8g2_SendBuffer(u8g2);
         return;
     }
 
     // 顶部状态栏
-    u8g2_SetFont(u8g2, u8g2_font_6x12_tf); 
-    u8g2_DrawStr(u8g2, 12, 12, "Syncing Time"); 
+    u8g2_SetFont(u8g2, u8g2_font_6x12_tf);
+    u8g2_DrawStr(u8g2, 12, 12, "Syncing Time");
 
-    int dot_idx = (elapsed_ms / 500) % 4; 
+    int dot_idx = (elapsed_ms / 500) % 4;
     for(int i = 0; i < dot_idx; i++) {
         u8g2_DrawStr(u8g2, 86 + (i * 4), 12, ".");
     }
@@ -329,17 +321,17 @@ void draw_syncing_ui(u8g2_t *u8g2)
     #endif
     snprintf(time_buf, sizeof(time_buf), "%ds", seconds);
     int time_w = u8g2_GetStrWidth(u8g2, time_buf);
-    u8g2_DrawStr(u8g2, 126 - time_w, 12, time_buf); 
+    u8g2_DrawStr(u8g2, 126 - time_w, 12, time_buf);
 
-    u8g2_DrawHLine(u8g2, 0, 16, 128); 
+    u8g2_DrawHLine(u8g2, 0, 16, 128);
 
     // 中部：励志语
-    int tip_idx = (elapsed_ms / 3000) % 4; 
-    u8g2_SetFont(u8g2, u8g2_font_7x14_tf); 
+    int tip_idx = (elapsed_ms / 3000) % 4;
+    u8g2_SetFont(u8g2, u8g2_font_7x14_tf);
     int str_width = u8g2_GetStrWidth(u8g2, tips[tip_idx]);
-    u8g2_DrawStr(u8g2, (128 - str_width) / 2, 38, tips[tip_idx]); 
+    u8g2_DrawStr(u8g2, (128 - str_width) / 2, 38, tips[tip_idx]);
 
-    u8g2_DrawHLine(u8g2, 0, 48, 128); 
+    u8g2_DrawHLine(u8g2, 0, 48, 128);
 
     // 底部：小球动画
     int track_y = 58;
@@ -348,8 +340,8 @@ void draw_syncing_ui(u8g2_t *u8g2)
     u8g2_DrawHLine(u8g2, track_x_start, track_y, track_len);
 
     int cycle_ms = 2000;
-    float t = (float)(elapsed_ms % cycle_ms) / cycle_ms; 
-    int ball_x = (t <= 0.5f) ? (track_x_start + (int)(t * 2.0f * track_len)) : 
+    float t = (float)(elapsed_ms % cycle_ms) / cycle_ms;
+    int ball_x = (t <= 0.5f) ? (track_x_start + (int)(t * 2.0f * track_len)) :
                                (track_x_end - (int)((t - 0.5f) * 2.0f * track_len));
     u8g2_DrawDisc(u8g2, ball_x, track_y, 3, U8G2_DRAW_ALL);
 
@@ -389,14 +381,14 @@ void draw_main_clock_ui(u8g2_t *u8g2)
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
 
     // 列1：外温（OUT_T）
-    u8g2_DrawStr(u8g2, 2, 45, "OUT_T"); 
+    u8g2_DrawStr(u8g2, 2, 45, "OUT_T");
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    snprintf(buf, sizeof(buf), "%dC", weather_data.temp_now); 
+    snprintf(buf, sizeof(buf), "%dC", weather_data.temp_now);
     u8g2_DrawStr(u8g2, 2, 57, buf);
 
     // 列2：海拔（X=45）
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
-    u8g2_DrawStr(u8g2, 45, 45, "ALT"); 
+    u8g2_DrawStr(u8g2, 45, 45, "ALT");
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     snprintf(buf, sizeof(buf), "%.0fm", bmp280.altitude);
     u8g2_DrawStr(u8g2, 45, 57, buf); // 瀵归綈 X=45
@@ -405,7 +397,7 @@ void draw_main_clock_ui(u8g2_t *u8g2)
     u8g2_SetFont(u8g2, u8g2_font_5x7_tf);
     u8g2_DrawStr(u8g2, 88, 45, "IN_T"); // 对齐 X=88
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    snprintf(buf, sizeof(buf), "%.1fC", bmp280.temperature); 
+    snprintf(buf, sizeof(buf), "%.1fC", bmp280.temperature);
     u8g2_DrawStr(u8g2, 88, 57, buf); // 瀵归綈 X=88
 
     // 底部双分隔线（静态+动态）
@@ -413,7 +405,7 @@ void draw_main_clock_ui(u8g2_t *u8g2)
     u8g2_DrawHLine(u8g2, 0, 60, 128);
     // 2. 下方动态线（15 秒循环增长）
     uint32_t ms_now = esp_timer_get_time() / 1000;
-    int progress_width = (ms_now % 15000) * 128 / 15000; 
+    int progress_width = (ms_now % 15000) * 128 / 15000;
     u8g2_DrawHLine(u8g2, 0, 62, progress_width);
 
     u8g2_SendBuffer(u8g2);
@@ -421,33 +413,33 @@ void draw_main_clock_ui(u8g2_t *u8g2)
 
 // 建议将该结构体定义放在函数外，避免重复初始化。
 
-int menu_layer = 1; // 默认在一级菜单
+int ui_menu_layer = 1; // 默认在一级菜单
 void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
 {
     static const game_info_t info_db[] = {
-        [MODE_CLOCK]       = {"Clock",    123}, 
+        [MODE_CLOCK]       = {"Clock",    123},
         [MODE_RADIO]       = {"Radio",    150},
-        [MODE_GAME_SELECT] = {"Game",     207}, 
-        [MODE_BLOOD]       = {"SpO2",     238},  
+        [MODE_GAME_SELECT] = {"Game",     207},
+        [MODE_BLOOD]       = {"SpO2",     238},
         [MODE_SETTING]     = {"System",   129},
         [MODE_RECORDER]    = {"Record",   137},
-        [MODE_BALL]        = {"Ball",     175},  
-        [MODE_DINO]        = {"Dino",     259}, 
-        [MODE_PLANE]       = {"Plane",    165}, 
+        [MODE_BALL]        = {"Ball",     175},
+        [MODE_DINO]        = {"Dino",     259},
+        [MODE_PLANE]       = {"Plane",    165},
     };
 
     const ui_mode_e *active_list;
     int count = 0;
 
     // 直接根据菜单层级选择列表，避免猜测逻辑。
-    if (menu_layer == 2) {
+    if (ui_menu_layer == 2) {
         active_list = sub_game_list;
         count = sizeof(sub_game_list) / sizeof(sub_game_list[0]);
     } else {
         active_list = main_app_list;
         count = sizeof(main_app_list) / sizeof(main_app_list[0]);
     }
-    
+
     int cur = 0;
     for (int i = 0; i < count; i++) {
         if (active_list[i] == selected) { cur = i; break; }
@@ -459,38 +451,38 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
 
     // 顶部状态栏
     u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
-    if (menu_layer == 2) {
+    if (ui_menu_layer == 2) {
         u8g2_DrawStr(u8g2, 31, 10, "Select Game");
     } else {
         u8g2_DrawStr(u8g2, 34, 10, "Select App");
     }
     u8g2_DrawHLine(u8g2, 0, 12, 128);
 
-    u8g2_DrawTriangle(u8g2, 4, 32, 8, 28, 8, 36);   
-    u8g2_DrawTriangle(u8g2, 119, 28, 119, 36, 123, 32); 
+    u8g2_DrawTriangle(u8g2, 4, 32, 8, 28, 8, 36);
+    u8g2_DrawTriangle(u8g2, 119, 28, 119, 36, 123, 32);
 
     const char *left_name  = info_db[active_list[left_i]].name;
     const char *right_name = info_db[active_list[right_i]].name;
 
     // 仅在二级菜单中将游戏入口显示为 Back。
-    if (menu_layer == 2 && active_list[left_i] == MODE_GAME_SELECT)  left_name = "Back";
-    if (menu_layer == 2 && active_list[right_i] == MODE_GAME_SELECT) right_name = "Back";
+    if (ui_menu_layer == 2 && active_list[left_i] == MODE_GAME_SELECT)  left_name = "Back";
+    if (ui_menu_layer == 2 && active_list[right_i] == MODE_GAME_SELECT) right_name = "Back";
 
-    u8g2_SetFont(u8g2, u8g2_font_5x7_tr); 
+    u8g2_SetFont(u8g2, u8g2_font_5x7_tr);
     u8g2_DrawStr(u8g2, 12, 35, left_name);
     int right_name_w = u8g2_GetStrWidth(u8g2, right_name);
     u8g2_DrawStr(u8g2, 116 - right_name_w, 35, right_name);
 
     int center_x = 44, center_y = 15, w = 40, h = 34;
-    u8g2_DrawRFrame(u8g2, center_x, center_y, w, h, 4);     
-    
-    u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_2x_t); 
+    u8g2_DrawRFrame(u8g2, center_x, center_y, w, h, 4);
+
+    u8g2_SetFont(u8g2, u8g2_font_open_iconic_all_2x_t);
 
     const char *cur_name = info_db[selected].name;
     uint16_t cur_icon    = info_db[selected].icon_code;
 
     // 仅在二级菜单中修改名称和图标。
-    if (menu_layer == 2 && selected == MODE_GAME_SELECT) {
+    if (ui_menu_layer == 2 && selected == MODE_GAME_SELECT) {
         cur_name = "Back";
         cur_icon = 66; // 返回箭头
     }
@@ -499,12 +491,12 @@ void draw_select_ui(u8g2_t *u8g2, ui_mode_e selected)
 
     u8g2_SetFont(u8g2, u8g2_font_6x10_tr);
     int text_width = u8g2_GetStrWidth(u8g2, cur_name);
-    int text_x = center_x + (w - text_width) / 2; 
-    
-    u8g2_DrawBox(u8g2, text_x - 2, center_y + h + 3 , text_width + 4, 11); 
-    u8g2_SetDrawColor(u8g2, 0); 
+    int text_x = center_x + (w - text_width) / 2;
+
+    u8g2_DrawBox(u8g2, text_x - 2, center_y + h + 3 , text_width + 4, 11);
+    u8g2_SetDrawColor(u8g2, 0);
     u8g2_DrawStr(u8g2, text_x, center_y + h + 11, cur_name);
-    u8g2_SetDrawColor(u8g2, 1); 
+    u8g2_SetDrawColor(u8g2, 1);
 
     u8g2_SendBuffer(u8g2);
 }
@@ -599,7 +591,7 @@ static bool is_point_in_box(float px, float py, Obstacle_t box, float margin) {
             py + margin > box.y && py - margin < box.y + box.h);
 }
 
-void draw_ball_game(u8g2_t *u8g2) 
+void draw_ball_game(u8g2_t *u8g2)
 {
     static float x = 20.0f, y = 20.0f; // 球位置
     static float vx = 0.0f, vy = 0.0f;
@@ -618,7 +610,7 @@ void draw_ball_game(u8g2_t *u8g2)
         float dy = y - coin.y;
         if ((dx * dx + dy * dy) < (radius + coin.r) * (radius + coin.r)) {
             score++;
-            
+
             // 随机生成新的障碍物位置（避开当前小球）
             do {
                 // esp_random() 返回 32 位无符号数，取余后限制在安全区域
@@ -642,9 +634,9 @@ void draw_ball_game(u8g2_t *u8g2)
     // ==========================================
     // 2. 物理运动计算
     // ==========================================
-    vx = (vx - euler_angle.roll * 0.15f) * 0.92f; 
+    vx = (vx - euler_angle.roll * 0.15f) * 0.92f;
     vy = (vy + euler_angle.pitch * 0.15f) * 0.92f;
-    
+
     float next_x = x + vx;
     float next_y = y + vy;
 
@@ -652,7 +644,7 @@ void draw_ball_game(u8g2_t *u8g2)
     if (next_x + radius > wall.x && next_x - radius < wall.x + wall.w &&
         y + radius > wall.y && y - radius < wall.y + wall.h) {
         vx = -vx * 0.5f;     // 水平方向反弹
-        next_x = x;      
+        next_x = x;
     }
     if (x + radius > wall.x && x - radius < wall.x + wall.w &&
         next_y + radius > wall.y && next_y - radius < wall.y + wall.h) {
@@ -673,15 +665,15 @@ void draw_ball_game(u8g2_t *u8g2)
     // 3. UI 娓叉煋
     // ==========================================
     u8g2_ClearBuffer(u8g2);
-    u8g2_DrawFrame(u8g2, 0, 0, 128, 64); 
-    
+    u8g2_DrawFrame(u8g2, 0, 0, 128, 64);
+
     u8g2_DrawBox(u8g2, wall.x, wall.y, wall.w, wall.h); // 闅忔満澶у皬鐨勫
-    
+
     if (coin.active) {
-        u8g2_DrawDisc(u8g2, coin.x, coin.y, coin.r, U8G2_DRAW_ALL); 
+        u8g2_DrawDisc(u8g2, coin.x, coin.y, coin.r, U8G2_DRAW_ALL);
     }
 
-    u8g2_DrawDisc(u8g2, (u8g2_uint_t)x, (u8g2_uint_t)y, radius, U8G2_DRAW_ALL); 
+    u8g2_DrawDisc(u8g2, (u8g2_uint_t)x, (u8g2_uint_t)y, radius, U8G2_DRAW_ALL);
 
     char score_str[16];
     snprintf(score_str, sizeof(score_str), "Score:%d", score);
@@ -691,7 +683,7 @@ void draw_ball_game(u8g2_t *u8g2)
     u8g2_SendBuffer(u8g2);
 }
 
-DinoGame_t dino_game = {
+DinoGame_t ui_dino_game = {
     .state = STATE_RUNNING,
     .score = 0,
     .high_score = 0,
@@ -699,31 +691,31 @@ DinoGame_t dino_game = {
     .obs = { .x = 128, .type = 0, .bird_y = 35, .speed = 4.0f } // 初始速度为 4.0
 };
 
-void dino_game_reset(DinoGame_t *game) 
+void dino_game_reset(DinoGame_t *game)
 {
     game->state = STATE_RUNNING;
     game->score = 0;
-    
+
     // 初始化恐龙
     game->dino.y = 39.0f;
     game->dino.vy = 0.0f;
     game->dino.is_jumping = false;
     game->dino.is_ducking = false;
-    
+
     // 初始化障碍物
     game->obs.x = 128;
     game->obs.type = 0;
     game->obs.speed = 4;
 }
 
-void draw_dino_game(u8g2_t *u8g2) 
+void draw_dino_game(u8g2_t *u8g2)
 {
     if (in_select) return; // 菜单切换时跳过游戏绘制
 
 // ==========================================
     // A. 游戏结束界面（STATE_GAMEOVER）
     // ==========================================
-    if (dino_game.state == STATE_GAMEOVER) {
+    if (ui_dino_game.state == STATE_GAMEOVER) {
         u8g2_ClearBuffer(u8g2);
         int w; // 用于暂存字符串像素宽度
 
@@ -731,23 +723,23 @@ void draw_dino_game(u8g2_t *u8g2)
         u8g2_SetFont(u8g2, u8g2_font_6x12_tr);
         w = u8g2_GetStrWidth(u8g2, "GAME OVER");
         u8g2_DrawStr(u8g2, (128 - w) / 2, 22, "GAME OVER");
-        
+
         // 2. 绘制当前分数（6x10 字体）
         char score_buf[20];
-        snprintf(score_buf, sizeof(score_buf), "Score: %d", (int)dino_game.score);
+        snprintf(score_buf, sizeof(score_buf), "Score: %d", (int)ui_dino_game.score);
         u8g2_SetFont(u8g2, u8g2_font_6x10_tr);
         w = u8g2_GetStrWidth(u8g2, score_buf);
         u8g2_DrawStr(u8g2, (128 - w) / 2, 36, score_buf);
 
         // 3. 绘制按键提示（6x10 字体）
         u8g2_SetFont(u8g2, u8g2_font_6x10_tr);
-        
+
         w = u8g2_GetStrWidth(u8g2, "SHORT KEY: RETRY");
         u8g2_DrawStr(u8g2, (128 - w) / 2, 50, "SHORT KEY: RETRY");
 
         w = u8g2_GetStrWidth(u8g2, "LONG KEY: MENU");
         u8g2_DrawStr(u8g2, (128 - w) / 2, 62, "LONG KEY: MENU");
-        
+
         u8g2_SendBuffer(u8g2);
         return;
     }
@@ -757,67 +749,67 @@ void draw_dino_game(u8g2_t *u8g2)
     // ==========================================
 
     // 1. MPU6050 姿态控制输入
-    if (!dino_game.dino.is_jumping && !dino_game.dino.is_ducking && euler_angle.pitch > 25.0f) {
-        dino_game.dino.is_jumping = true; 
-        dino_game.dino.vy = -5.5f; // 起跳初速度
+    if (!ui_dino_game.dino.is_jumping && !ui_dino_game.dino.is_ducking && euler_angle.pitch > 25.0f) {
+        ui_dino_game.dino.is_jumping = true;
+        ui_dino_game.dino.vy = -5.5f; // 起跳初速度
     }
-    dino_game.dino.is_ducking = (euler_angle.pitch < -20.0f);
+    ui_dino_game.dino.is_ducking = (euler_angle.pitch < -20.0f);
 
     // 2. 恐龙物理更新（跳跃与下落）
-    if (dino_game.dino.is_jumping) {
-        dino_game.dino.vy += 0.65f; // 重力加速度
-        dino_game.dino.y += dino_game.dino.vy;
-        if (dino_game.dino.y >= 39.0f) { // 落地检测
-            dino_game.dino.y = 39.0f;
-            dino_game.dino.vy = 0.0f;
-            dino_game.dino.is_jumping = false;
+    if (ui_dino_game.dino.is_jumping) {
+        ui_dino_game.dino.vy += 0.65f; // 重力加速度
+        ui_dino_game.dino.y += ui_dino_game.dino.vy;
+        if (ui_dino_game.dino.y >= 39.0f) { // 落地检测
+            ui_dino_game.dino.y = 39.0f;
+            ui_dino_game.dino.vy = 0.0f;
+            ui_dino_game.dino.is_jumping = false;
         }
     }
 
     // 3. 分数增长与速度动态调整
-    dino_game.score += 0.2f; // 基于生存时间累计分数
-    
+    ui_dino_game.score += 0.2f; // 基于生存时间累计分数
+
     // 基础速度 4.0，按分数逐步增加，并限制上限 9.0。
-    dino_game.obs.speed = 4.0f + (dino_game.score / 200.0f);
-    if (dino_game.obs.speed > 9.0f) {
-        dino_game.obs.speed = 9.0f; 
+    ui_dino_game.obs.speed = 4.0f + (ui_dino_game.score / 200.0f);
+    if (ui_dino_game.obs.speed > 9.0f) {
+        ui_dino_game.obs.speed = 9.0f;
     }
 
     // 4. 障碍物向左移动
-    dino_game.obs.x -= (int)dino_game.obs.speed; 
-    if (dino_game.obs.x < -20) {
-        dino_game.obs.x = 128; // 移出屏幕后重置到右侧
-        dino_game.obs.type = esp_random() % 2; // 随机：0=仙人掌，1=飞鸟
-        dino_game.obs.bird_y = (esp_random() % 15) + 30; // 飞鸟高度 30~45
+    ui_dino_game.obs.x -= (int)ui_dino_game.obs.speed;
+    if (ui_dino_game.obs.x < -20) {
+        ui_dino_game.obs.x = 128; // 移出屏幕后重置到右侧
+        ui_dino_game.obs.type = esp_random() % 2; // 随机：0=仙人掌，1=飞鸟
+        ui_dino_game.obs.bird_y = (esp_random() % 15) + 30; // 飞鸟高度 30~45
     }
 
     // ==========================================
     // C. 核心碰撞检测（AABB）
     // ==========================================
-    
+
     // 恐龙 Hitbox
     int d_x = 15;
-    int d_y = (int)dino_game.dino.y;
+    int d_y = (int)ui_dino_game.dino.y;
     int d_w = 12;
-    int d_h = (dino_game.dino.is_ducking ? 8 : 14); // 蹲下时高度更低
-    if (dino_game.dino.is_ducking) d_y += 6; // 蹲下时碰撞框下移
+    int d_h = (ui_dino_game.dino.is_ducking ? 8 : 14); // 蹲下时高度更低
+    if (ui_dino_game.dino.is_ducking) d_y += 6; // 蹲下时碰撞框下移
 
     // 障碍物 Hitbox
-    int o_x = dino_game.obs.x;
+    int o_x = ui_dino_game.obs.x;
     int o_y, o_w, o_h;
-    if (dino_game.obs.type == 0) { // 仙人掌
+    if (ui_dino_game.obs.type == 0) { // 仙人掌
         o_y = 40; o_w = 8; o_h = 15;
     } else { // 飞鸟
-        o_y = dino_game.obs.bird_y; o_w = 12; o_h = 6;
+        o_y = ui_dino_game.obs.bird_y; o_w = 12; o_h = 6;
     }
 
     // 经典 AABB 碰撞判断
     if (d_x < o_x + o_w && d_x + d_w > o_x &&
         d_y < o_y + o_h && d_y + d_h > o_y) {
-        
-        dino_game.state = STATE_GAMEOVER; // 碰撞后切换到结束状态
-        if ((int)dino_game.score > dino_game.high_score) {
-            dino_game.high_score = (int)dino_game.score;
+
+        ui_dino_game.state = STATE_GAMEOVER; // 碰撞后切换到结束状态
+        if ((int)ui_dino_game.score > ui_dino_game.high_score) {
+            ui_dino_game.high_score = (int)ui_dino_game.score;
         }
     }
 
@@ -830,16 +822,16 @@ void draw_dino_game(u8g2_t *u8g2)
     u8g2_DrawHLine(u8g2, 0, 55, 128);
 
     // 2. 画恐龙
-    if (dino_game.dino.is_ducking && !dino_game.dino.is_jumping) {
+    if (ui_dino_game.dino.is_ducking && !ui_dino_game.dino.is_jumping) {
         u8g2_DrawBox(u8g2, d_x, d_y, 18, 5); // 蹲下形态
     } else {
         u8g2_DrawBox(u8g2, d_x + 4, d_y, 10, 6); // 头
         u8g2_DrawBox(u8g2, d_x, d_y + 4, 12, 8); // 身体
-        
+
         // 跑步腿部动画
-        if (!dino_game.dino.is_jumping && (dino_game.obs.x % 10 < 5)) {
+        if (!ui_dino_game.dino.is_jumping && (ui_dino_game.obs.x % 10 < 5)) {
             u8g2_DrawVLine(u8g2, d_x + 3, d_y + 12, 4);
-        } else if (!dino_game.dino.is_jumping) {
+        } else if (!ui_dino_game.dino.is_jumping) {
             u8g2_DrawVLine(u8g2, d_x + 8, d_y + 12, 4);
         } else {
             u8g2_DrawVLine(u8g2, d_x + 3, d_y + 12, 3); // 跳跃时收腿
@@ -848,22 +840,22 @@ void draw_dino_game(u8g2_t *u8g2)
     }
 
     // 3. 画障碍物
-    if (dino_game.obs.type == 0) { // 仙人掌
-        u8g2_DrawBox(u8g2, dino_game.obs.x + 2, 40, 4, 15);
-        u8g2_DrawBox(u8g2, dino_game.obs.x, 44, 2, 6);
-        u8g2_DrawBox(u8g2, dino_game.obs.x + 6, 42, 2, 6);
+    if (ui_dino_game.obs.type == 0) { // 仙人掌
+        u8g2_DrawBox(u8g2, ui_dino_game.obs.x + 2, 40, 4, 15);
+        u8g2_DrawBox(u8g2, ui_dino_game.obs.x, 44, 2, 6);
+        u8g2_DrawBox(u8g2, ui_dino_game.obs.x + 6, 42, 2, 6);
     } else { // 飞鸟
-        u8g2_DrawBox(u8g2, dino_game.obs.x, dino_game.obs.bird_y, 12, 4); // 鸟身
-        if (dino_game.obs.x % 12 < 6) { // 扇动翅膀动画
-            u8g2_DrawHLine(u8g2, dino_game.obs.x + 3, dino_game.obs.bird_y - 2, 6); // 翅膀向上
+        u8g2_DrawBox(u8g2, ui_dino_game.obs.x, ui_dino_game.obs.bird_y, 12, 4); // 鸟身
+        if (ui_dino_game.obs.x % 12 < 6) { // 扇动翅膀动画
+            u8g2_DrawHLine(u8g2, ui_dino_game.obs.x + 3, ui_dino_game.obs.bird_y - 2, 6); // 翅膀向上
         } else {
-            u8g2_DrawHLine(u8g2, dino_game.obs.x + 3, dino_game.obs.bird_y + 5, 6); // 翅膀向下
+            u8g2_DrawHLine(u8g2, ui_dino_game.obs.x + 3, ui_dino_game.obs.bird_y + 5, 6); // 翅膀向下
         }
     }
 
     // 4. 右上角计分栏
     char buf[20];
-    snprintf(buf, sizeof(buf), "HI %04d  %04d", dino_game.high_score, (int)dino_game.score);
+    snprintf(buf, sizeof(buf), "HI %04d  %04d", ui_dino_game.high_score, (int)ui_dino_game.score);
     u8g2_SetFont(u8g2, u8g2_font_4x6_tf);
     u8g2_DrawStr(u8g2, 75, 8, buf);
 
@@ -871,17 +863,17 @@ void draw_dino_game(u8g2_t *u8g2)
 }
 
 // 初始化全局游戏实例
-AirGame_t air_game = {
+AirGame_t ui_air_game = {
     .state = STATE_RUNNING,
     .score = 0,
     .player = { .x = 64, .y = 50, .vx = 0, .vy = 0, .width = 11, .height = 9 },
-    
+
     // 数组中的每个元素都是一个结构体
-    .bullets = { {0}, {0}, {0}, {0}, {0} }, 
+    .bullets = { {0}, {0}, {0}, {0}, {0} },
     .enemies = { {0}, {0}, {0} }
 };
 
-void air_game_reset(AirGame_t *game) 
+void air_game_reset(AirGame_t *game)
 {
     // 1. 清零整个结构体（包含子弹和敌机数组）
     memset(game, 0, sizeof(AirGame_t));
@@ -904,7 +896,7 @@ void draw_plane_game(u8g2_t *u8g2)
     // ==========================================
     // A. 游戏结束界面（STATE_GAMEOVER）
     // ==========================================
-    if (air_game.state == STATE_GAMEOVER) {
+    if (ui_air_game.state == STATE_GAMEOVER) {
         u8g2_ClearBuffer(u8g2);
         int w; // 用于临时保存字符串像素宽度
 
@@ -912,10 +904,10 @@ void draw_plane_game(u8g2_t *u8g2)
         u8g2_SetFont(u8g2, u8g2_font_6x12_tr);
         w = u8g2_GetStrWidth(u8g2, "GAME OVER");
         u8g2_DrawStr(u8g2, (128 - w) / 2, 22, "GAME OVER"); // Y 坐标略微上移
-        
+
         // 2. 绘制分数
         char buf[20];
-        snprintf(buf, sizeof(buf), "SCORE: %d", air_game.score);
+        snprintf(buf, sizeof(buf), "SCORE: %d", ui_air_game.score);
 
         w = u8g2_GetStrWidth(u8g2, buf);
         u8g2_DrawStr(u8g2, (128 - w) / 2, 36, buf);
@@ -927,7 +919,7 @@ void draw_plane_game(u8g2_t *u8g2)
         u8g2_SetFont(u8g2, u8g2_font_6x10_tr);
         w = u8g2_GetStrWidth(u8g2, "LONG KEY: MENU");
         u8g2_DrawStr(u8g2, (128 - w) / 2, 62, "LONG KEY: MENU");
-        
+
         u8g2_SendBuffer(u8g2);
         return;
     }
@@ -935,23 +927,23 @@ void draw_plane_game(u8g2_t *u8g2)
     // ==========================================
     // B. MPU6050 战机物理控制
     // ==========================================
-    
+
     // 优化战机移动手感：X 轴偏航，Y 轴俯仰。
-    air_game.player.vx = (air_game.player.vx - euler_angle.roll * 0.18f) * 0.94f;
-    air_game.player.vy = (air_game.player.vy + euler_angle.pitch * 0.18f) * 0.94f;
+    ui_air_game.player.vx = (ui_air_game.player.vx - euler_angle.roll * 0.18f) * 0.94f;
+    ui_air_game.player.vy = (ui_air_game.player.vy + euler_angle.pitch * 0.18f) * 0.94f;
 
     // 小角度抖动时衰减速度，避免飞机持续漂移。
-    if (fabs(euler_angle.roll) < 1.5f) air_game.player.vx *= 0.8f; 
-    if (fabs(euler_angle.pitch) < 1.5f) air_game.player.vy *= 0.8f;
+    if (fabs(euler_angle.roll) < 1.5f) ui_air_game.player.vx *= 0.8f;
+    if (fabs(euler_angle.pitch) < 1.5f) ui_air_game.player.vy *= 0.8f;
 
-    air_game.player.x += air_game.player.vx;
-    air_game.player.y += air_game.player.vy;
+    ui_air_game.player.x += ui_air_game.player.vx;
+    ui_air_game.player.y += ui_air_game.player.vy;
 
     // 屏幕边界限制
-    if (air_game.player.x < 5) air_game.player.x = 5;
-    if (air_game.player.x > 123) air_game.player.x = 123;
-    if (air_game.player.y < 5) air_game.player.y = 5;
-    if (air_game.player.y > 59) air_game.player.y = 59;
+    if (ui_air_game.player.x < 5) ui_air_game.player.x = 5;
+    if (ui_air_game.player.x > 123) ui_air_game.player.x = 123;
+    if (ui_air_game.player.y < 5) ui_air_game.player.y = 5;
+    if (ui_air_game.player.y > 59) ui_air_game.player.y = 59;
 
     // ==========================================
     // C. 游戏内部逻辑（子弹、敌机）
@@ -963,10 +955,10 @@ void draw_plane_game(u8g2_t *u8g2)
     if (fire_tick >= 2) { // 每 2 帧发射一发
         fire_tick = 0;
         for (int i = 0; i < MAX_BULLETS; i++) {
-            if (!air_game.bullets[i].active) {
-                air_game.bullets[i].x = (int)air_game.player.x;
-                air_game.bullets[i].y = (int)air_game.player.y - 5;
-                air_game.bullets[i].active = true;
+            if (!ui_air_game.bullets[i].active) {
+                ui_air_game.bullets[i].x = (int)ui_air_game.player.x;
+                ui_air_game.bullets[i].y = (int)ui_air_game.player.y - 5;
+                ui_air_game.bullets[i].active = true;
                 break;
             }
         }
@@ -974,48 +966,48 @@ void draw_plane_game(u8g2_t *u8g2)
 
     // 子弹向上移动
     for (int i = 0; i < MAX_BULLETS; i++) {
-        if (air_game.bullets[i].active) {
-            air_game.bullets[i].y -= 3;
-            if (air_game.bullets[i].y < 0) air_game.bullets[i].active = false;
+        if (ui_air_game.bullets[i].active) {
+            ui_air_game.bullets[i].y -= 3;
+            if (ui_air_game.bullets[i].y < 0) ui_air_game.bullets[i].active = false;
         }
     }
 
     // 2. 敌机下落逻辑
     for (int i = 0; i < MAX_ENEMIES; i++) {
-        if (!air_game.enemies[i].active) { // 刷新敌机
-            air_game.enemies[i].x = (esp_random() % 110) + 10;
-            air_game.enemies[i].y = -(esp_random() % 30);
-            air_game.enemies[i].speed = (esp_random() % 2) + 1;
-            air_game.enemies[i].active = true;
+        if (!ui_air_game.enemies[i].active) { // 刷新敌机
+            ui_air_game.enemies[i].x = (esp_random() % 110) + 10;
+            ui_air_game.enemies[i].y = -(esp_random() % 30);
+            ui_air_game.enemies[i].speed = (esp_random() % 2) + 1;
+            ui_air_game.enemies[i].active = true;
         } else {
-            air_game.enemies[i].y += air_game.enemies[i].speed;
-            if (air_game.enemies[i].y > 64) air_game.enemies[i].active = false; // 飞出底边后失效
+            ui_air_game.enemies[i].y += ui_air_game.enemies[i].speed;
+            if (ui_air_game.enemies[i].y > 64) ui_air_game.enemies[i].active = false; // 飞出底边后失效
         }
     }
 
     // 3. 子弹与敌机碰撞（Hitbox: 敌机 8x8，子弹 1x3）
     for (int b = 0; b < MAX_BULLETS; b++) {
-        if (!air_game.bullets[b].active) continue;
+        if (!ui_air_game.bullets[b].active) continue;
         for (int e = 0; e < MAX_ENEMIES; e++) {
-            if (!air_game.enemies[e].active) continue;
+            if (!ui_air_game.enemies[e].active) continue;
 
-            if (air_game.bullets[b].x > air_game.enemies[e].x - 4 && air_game.bullets[b].x < air_game.enemies[e].x + 4 &&
-                air_game.bullets[b].y > air_game.enemies[e].y - 4 && air_game.bullets[b].y < air_game.enemies[e].y + 4) {
-                
-                air_game.bullets[b].active = false;
-                air_game.enemies[e].active = false; // 击毁
-                air_game.score += 10;
+            if (ui_air_game.bullets[b].x > ui_air_game.enemies[e].x - 4 && ui_air_game.bullets[b].x < ui_air_game.enemies[e].x + 4 &&
+                ui_air_game.bullets[b].y > ui_air_game.enemies[e].y - 4 && ui_air_game.bullets[b].y < ui_air_game.enemies[e].y + 4) {
+
+                ui_air_game.bullets[b].active = false;
+                ui_air_game.enemies[e].active = false; // 击毁
+                ui_air_game.score += 10;
             }
         }
     }
 
     // 4. 敌机与玩家战机碰撞（玩家 11x9，敌机 8x8）
     for (int e = 0; e < MAX_ENEMIES; e++) {
-        if (!air_game.enemies[e].active) continue;
-        if (air_game.player.x - 5 < air_game.enemies[e].x + 4 && air_game.player.x + 5 > air_game.enemies[e].x - 4 &&
-            air_game.player.y - 4 < air_game.enemies[e].y + 4 && air_game.player.y + 4 > air_game.enemies[e].y - 4) {
-            
-            air_game.state = STATE_GAMEOVER; // 坠毁
+        if (!ui_air_game.enemies[e].active) continue;
+        if (ui_air_game.player.x - 5 < ui_air_game.enemies[e].x + 4 && ui_air_game.player.x + 5 > ui_air_game.enemies[e].x - 4 &&
+            ui_air_game.player.y - 4 < ui_air_game.enemies[e].y + 4 && ui_air_game.player.y + 4 > ui_air_game.enemies[e].y - 4) {
+
+            ui_air_game.state = STATE_GAMEOVER; // 坠毁
         }
     }
 
@@ -1032,16 +1024,16 @@ void draw_plane_game(u8g2_t *u8g2)
     u8g2_DrawPixel(u8g2, 110, (star_y + 10) % 64);
 
     // 2. 绘制战机（三角形）
-    int px = (int)air_game.player.x;
-    int py = (int)air_game.player.y;
+    int px = (int)ui_air_game.player.x;
+    int py = (int)ui_air_game.player.y;
     u8g2_DrawTriangle(u8g2, px, py - 5, px - 5, py + 4, px + 5, py + 4); // 机身
     u8g2_DrawHLine(u8g2, px - 8, py + 2, 17); // 机翼
 
     // 3. 绘制敌机
     for (int i = 0; i < MAX_ENEMIES; i++) {
-        if (air_game.enemies[i].active) {
-            int ex = air_game.enemies[i].x;
-            int ey = air_game.enemies[i].y;
+        if (ui_air_game.enemies[i].active) {
+            int ex = ui_air_game.enemies[i].x;
+            int ey = ui_air_game.enemies[i].y;
             u8g2_DrawBox(u8g2, ex - 3, ey - 3, 7, 7); // 敌机核心
             u8g2_DrawHLine(u8g2, ex - 5, ey, 11);
         }
@@ -1049,24 +1041,24 @@ void draw_plane_game(u8g2_t *u8g2)
 
     // 4. 绘制子弹
     for (int i = 0; i < MAX_BULLETS; i++) {
-        if (air_game.bullets[i].active) {
-            u8g2_DrawVLine(u8g2, air_game.bullets[i].x, air_game.bullets[i].y, 3);
+        if (ui_air_game.bullets[i].active) {
+            u8g2_DrawVLine(u8g2, ui_air_game.bullets[i].x, ui_air_game.bullets[i].y, 3);
         }
     }
 
     // 5. 得分栏
     char score_str[16];
-    snprintf(score_str, sizeof(score_str), "SCORE:%04d", air_game.score);
+    snprintf(score_str, sizeof(score_str), "SCORE:%04d", ui_air_game.score);
     u8g2_SetFont(u8g2, u8g2_font_4x6_tf);
     u8g2_DrawStr(u8g2, 2, 8, score_str);
 
     u8g2_SendBuffer(u8g2);
 }
 
-static uint32_t sample_start = 0; 
+static uint32_t s_blood_sample_start = 0;
 
 void reset_blood_ui_timer(void) {
-    sample_start = 0; 
+    s_blood_sample_start = 0;
 }
 
 void draw_blood_ui(u8g2_t *u8g2)
@@ -1102,9 +1094,9 @@ void draw_blood_ui(u8g2_t *u8g2)
             u8g2_SetFont(u8g2, u8g2_font_6x10_tf); //
             u8g2_DrawStr(u8g2, 22, 30, "Measuring..."); //
 
-            if (sample_start == 0) sample_start = xTaskGetTickCount(); //
-            
-            uint32_t elapsed = xTaskGetTickCount() - sample_start; //
+            if (s_blood_sample_start == 0) s_blood_sample_start = xTaskGetTickCount(); //
+
+            uint32_t elapsed = xTaskGetTickCount() - s_blood_sample_start; //
             int bar = (elapsed / 51); //
             if (bar > 128) bar = 128; //
 
@@ -1148,50 +1140,53 @@ void draw_blood_ui(u8g2_t *u8g2)
             break; //
     }
 
-    u8g2_SendBuffer(u8g2); 
+    u8g2_SendBuffer(u8g2);
 }
 
 void draw_recorder_ui(u8g2_t *u8g2)
 {
     recorder_state_t state = recorder_get_state();
+    bool has_recording = recorder_has_recording();
     uint16_t raw_peak = recorder_get_peak_level(); // 假设这是原始值
     uint32_t recorded_ms = recorder_get_recorded_ms();
-    
+
     // --- 逻辑修正：计算响度进度条宽度 ---
     // 1. 取绝对值（防止负数导致逻辑崩溃）
     int32_t abs_peak = (int32_t)raw_peak;
     if (abs_peak < 0) abs_peak = -abs_peak;
-    
+
     // 2. 计算映射 (最大宽度 108，留出边框内部间隙)
     // 假设 32767 是最大量程
     int bar_w = (abs_peak * 108) / 32767;
-    
+
     // 3. 严格限程：必须在 0 到 108 之间
     if (bar_w < 0) bar_w = 0;
     if (bar_w > 108) bar_w = 108;
-    
+
     char buf[20];
     u8g2_ClearBuffer(u8g2);
 
     // --- 1. 顶部标题 ---
     u8g2_SetFont(u8g2, u8g2_font_6x12_tf);
-    u8g2_DrawStr(u8g2, 40, 10, "RECORDER"); 
+    u8g2_DrawStr(u8g2, 40, 10, "RECORDER");
 
     // --- 2. 状态与时间 ---
-    u8g2_SetFont(u8g2, u8g2_font_6x10_tf); 
+    u8g2_SetFont(u8g2, u8g2_font_6x10_tf);
     if (state == RECORDER_STATE_RECORDING) {
         if ((recorded_ms / 500) % 2 == 0) {
-            u8g2_DrawDisc(u8g2, 8, 22, 3, U8G2_DRAW_ALL); 
+            u8g2_DrawDisc(u8g2, 8, 22, 3, U8G2_DRAW_ALL);
         }
         u8g2_DrawStr(u8g2, 16, 26, "RECORD");
     } else if (state == RECORDER_STATE_PLAYING) {
         u8g2_DrawTriangle(u8g2, 6, 20, 6, 26, 11, 23);
         u8g2_DrawStr(u8g2, 16, 26, "PLAYING");
+    } else if (has_recording) {
+        u8g2_DrawStr(u8g2, 8, 26, "READY");
     } else {
         u8g2_DrawStr(u8g2, 8, 26, "IDLE");
     }
 
-    u8g2_SetFont(u8g2, u8g2_font_7x14_tf); 
+    u8g2_SetFont(u8g2, u8g2_font_7x14_tf);
     uint16_t sec = recorded_ms / 1000;
     snprintf(buf, sizeof(buf), "%02d:%02d", (sec % 3600) / 60, sec % 60);
     u8g2_DrawStr(u8g2, 85, 26, buf); // 稍微往右移一点
@@ -1202,19 +1197,19 @@ void draw_recorder_ui(u8g2_t *u8g2)
         u8g2_DrawVLine(u8g2, 8+i, 34, 2);
     }
     // 绘制外框 (左上角 x=8, y=37, 宽=112, 高=7)
-    u8g2_DrawFrame(u8g2, 8, 37, 112, 7); 
-    
+    u8g2_DrawFrame(u8g2, 8, 37, 112, 7);
+
     // 绘制内部实心条 (起始 x 应该比框大1，宽度最大不能超过框宽-2)
     if (bar_w > 0) {
         // x=10 起始，确保不会压到边框线
-        u8g2_DrawBox(u8g2, 10, 39, bar_w, 3); 
+        u8g2_DrawBox(u8g2, 10, 39, bar_w, 3);
     }
 
     // --- 4. 底部提示 ---
-    u8g2_SetFont(u8g2, u8g2_font_6x12_tf); 
-    const char *hint = "Short:REC Long:Menu";
+    u8g2_SetFont(u8g2, u8g2_font_6x12_tf);
+    const char *hint = "S:REC/AUTO L:PLAY SL:EXIT";
     int width = u8g2_GetStrWidth(u8g2, hint);
-    u8g2_DrawStr(u8g2, (128 - width) / 2, 60, hint); 
+    u8g2_DrawStr(u8g2, (128 - width) / 2, 60, hint);
 
     u8g2_SendBuffer(u8g2);
 }
@@ -1287,7 +1282,7 @@ void draw_setting_ui(u8g2_t *u8g2)
 
         snprintf(buf, sizeof(buf), "%u%%", s_setting_preview_volume);
         u8g2_SetFont(u8g2, u8g2_font_logisoso16_tn);
-    
+
         str_width = u8g2_GetStrWidth(u8g2, buf);
         int16_t val_x = (screen_width - str_width) / 2;
         u8g2_DrawStr(u8g2, val_x, 40, buf);

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MoYu Badge 用户使用手册</title>
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif; line-height: 1.7; margin: 32px; color: #222; }
+    h1, h2, h3 { color: #111; }
+    h1 { border-bottom: 2px solid #ddd; padding-bottom: 8px; }
+    h2 { margin-top: 28px; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 4px; }
+    ul, ol { padding-left: 24px; }
+  </style>
+</head>
+<body>
+  <h1>MoYu Badge 用户使用手册</h1>
+
+  <h2>1. 首次使用</h2>
+  <ol>
+    <li>设备上电后会优先尝试连接已保存的 Wi-Fi。</li>
+    <li>如果没有可用网络，设备会进入 AP 配网模式。</li>
+    <li>手机连接热点 <code>MoYu_Modge</code>。</li>
+    <li>浏览器访问 <code>192.168.100.1</code>。</li>
+    <li>选择目标 Wi-Fi 并输入密码，等待设备完成连接。</li>
+  </ol>
+
+  <h2>2. 基础交互方式</h2>
+  <ul>
+    <li>短按：切换、下一项、开始。</li>
+    <li>长按：确认、进入、执行当前操作。</li>
+    <li>超长按：退出当前模式。</li>
+    <li>倾斜设备：在部分模式下用于调节音量或控制游戏。</li>
+  </ul>
+
+  <h2>3. 页面说明</h2>
+
+  <h3>3.1 主时钟页</h3>
+  <ul>
+    <li>显示时间、天气、室温、气压和海拔。</li>
+    <li>长时间无操作会自动休眠。</li>
+  </ul>
+
+  <h3>3.2 应用选择页 / 游戏选择页</h3>
+  <ul>
+    <li>短按切换条目。</li>
+    <li>长按进入条目。</li>
+    <li>空闲时会自动休眠。</li>
+  </ul>
+
+  <h3>3.3 电台模式</h3>
+  <ul>
+    <li>短按：切换电台。</li>
+    <li>长按：进入或退出音量调节。</li>
+    <li>音量调节状态下：左右倾斜设备调节音量。</li>
+    <li>超长按：退出电台并回到选择菜单。</li>
+  </ul>
+  <p>补充说明：</p>
+  <ul>
+    <li>如果电台正在播放且一段时间没有按键输入，系统会自动熄灭 OLED。</li>
+    <li>息屏期间电台后台播放、网络连接和音频任务会继续工作。</li>
+    <li>按任意键会先亮屏，再执行后续操作。</li>
+  </ul>
+
+  <h3>3.4 录音机模式</h3>
+  <ul>
+    <li>第一次短按：删除上一段录音并开始新录音。</li>
+    <li>第二次短按：结束录音并自动播放一次。</li>
+    <li>长按：播放当前录音。</li>
+    <li>超长按：退出录音机并回到选择菜单。</li>
+  </ul>
+
+  <h3>3.5 血氧模式</h3>
+  <ul>
+    <li>将手指稳定贴合 <code>MAX30102</code> 传感器。</li>
+    <li>测量期间尽量避免移动手指和设备。</li>
+    <li>结果仅供参考，不作为医疗依据。</li>
+  </ul>
+
+  <h3>3.6 系统设置</h3>
+  <ul>
+    <li>系统信息</li>
+    <li>音量调节</li>
+    <li>Wi-Fi 重置</li>
+    <li>退出设置</li>
+  </ul>
+
+  <h2>4. 休眠与息屏</h2>
+  <ul>
+    <li>主时钟页、应用选择页、游戏选择页、系统信息页支持自动休眠。</li>
+    <li>电台模式为仅息屏，不会停止后台播放。</li>
+    <li>唤醒后设备会恢复到之前所在页面。</li>
+  </ul>
+
+  <h2>5. Wi-Fi 重置</h2>
+  <p>如果设备保存的是旧环境 Wi-Fi，可通过以下方式清除并重新配网：</p>
+  <ul>
+    <li>同步 / 配网页面长按。</li>
+    <li>系统设置中的 Wi-Fi 重置页面。</li>
+  </ul>
+</body>
+</html>

@@ -12,6 +12,6 @@ set(EXTRA_COMPONENT_DIRS
     "components/modules"
 )
 
-set(PROJECT_VER "1.0.2")
+set(PROJECT_VER "1.1.0")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(MoYu_Badge)

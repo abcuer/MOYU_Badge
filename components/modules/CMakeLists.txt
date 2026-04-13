@@ -30,6 +30,6 @@ idf_component_register(
         "." 
 
     REQUIRES 
-        bsp 
+        app bsp 
         esp_driver_gpio esp_timer esp_driver_i2c esp_driver_i2s espressif__led_strip freertos
 )

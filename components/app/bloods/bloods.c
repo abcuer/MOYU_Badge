@@ -3,56 +3,53 @@
 BloodData_t b_data = {0};
 BloodTaskState_t b_state = BLOOD_IDLE;
 
-static uint32_t ir_buf[SMOOTH_SIZE] = {0};
-static uint32_t red_buf[SMOOTH_SIZE] = {0};
-static int buf_idx = 0;
-static bool buf_full = false;
+static uint32_t s_ir_buf[SMOOTH_SIZE] = {0};
+static uint32_t s_red_buf[SMOOTH_SIZE] = {0};
+static int s_buf_index = 0;
+static bool s_buf_full = false;
 
-static uint32_t ir_smooth_prev = 0;
-static uint32_t ir_smooth_prev2 = 0;
+static uint32_t s_ir_smooth_prev = 0;
+static uint32_t s_ir_smooth_prev2 = 0;
 
-static uint32_t peak_val = 0;
-static uint32_t valley_val = 0;
-static uint32_t peak_tick = 0;
-static bool rising = false;
+static uint32_t s_peak_value = 0;
+static uint32_t s_valley_value = 0;
+static uint32_t s_peak_tick = 0;
+static bool s_rising = false;
+static int s_hr_history[HR_BUF_SIZE] = {0};
+static int s_hr_index = 0;
 
-#define HR_BUF_SIZE 5
-static int hr_history[HR_BUF_SIZE] = {0};
-static int hr_idx = 0;
-
-static float dc_ir = 0;
-static float dc_red = 0;
-#define DC_ALPHA 0.98f
+static float s_dc_ir = 0;
+static float s_dc_red = 0;
 
 void blood_reset(void)
 {
-    memset(ir_buf, 0, sizeof(ir_buf));
-    memset(red_buf, 0, sizeof(red_buf));
-    memset(hr_history, 0, sizeof(hr_history));
+    memset(s_ir_buf, 0, sizeof(s_ir_buf));
+    memset(s_red_buf, 0, sizeof(s_red_buf));
+    memset(s_hr_history, 0, sizeof(s_hr_history));
 
     reset_blood_ui_timer();
 
-    buf_idx = 0;
-    buf_full = false;
-    ir_smooth_prev = 0;
-    ir_smooth_prev2 = 0;
-    peak_val = 0;
-    valley_val = 0;
-    peak_tick = 0;
-    rising = false;
-    dc_ir = 0;
-    dc_red = 0;
+    s_buf_index = 0;
+    s_buf_full = false;
+    s_ir_smooth_prev = 0;
+    s_ir_smooth_prev2 = 0;
+    s_peak_value = 0;
+    s_valley_value = 0;
+    s_peak_tick = 0;
+    s_rising = false;
+    s_dc_ir = 0;
+    s_dc_red = 0;
     b_data.heart = 0;
     b_data.SpO2 = 0;
     b_data.valid = false;
-    hr_idx = 0;
+    s_hr_index = 0;
 }
 
-static uint32_t smooth(uint32_t *buf, uint32_t new_val)
+static uint32_t bloods_smooth(uint32_t *buf, uint32_t new_val)
 {
-    buf[buf_idx % SMOOTH_SIZE] = new_val;
+    buf[s_buf_index % SMOOTH_SIZE] = new_val;
     uint64_t sum = 0;
-    int count = buf_full ? SMOOTH_SIZE : (buf_idx + 1);
+    int count = s_buf_full ? SMOOTH_SIZE : (s_buf_index + 1);
     for (int i = 0; i < count; i++) {
         sum += buf[i];
     }
@@ -63,42 +60,42 @@ void blood_sample_once(void)
 {
     max30102_read_fifo();
 
-    uint32_t ir_s = smooth(ir_buf, fifo_ir);
-    uint32_t red_s = smooth(red_buf, fifo_red);
-    buf_idx++;
-    if (buf_idx >= SMOOTH_SIZE) {
-        buf_full = true;
+    uint32_t ir_s = bloods_smooth(s_ir_buf, fifo_ir);
+    uint32_t red_s = bloods_smooth(s_red_buf, fifo_red);
+    s_buf_index++;
+    if (s_buf_index >= SMOOTH_SIZE) {
+        s_buf_full = true;
     }
 
-    if (dc_ir == 0) {
-        dc_ir = (float)ir_s;
-        dc_red = (float)red_s;
+    if (s_dc_ir == 0) {
+        s_dc_ir = (float)ir_s;
+        s_dc_red = (float)red_s;
     } else {
-        dc_ir = DC_ALPHA * dc_ir + (1.0f - DC_ALPHA) * ir_s;
-        dc_red = DC_ALPHA * dc_red + (1.0f - DC_ALPHA) * red_s;
+        s_dc_ir = DC_ALPHA * s_dc_ir + (1.0f - DC_ALPHA) * ir_s;
+        s_dc_red = DC_ALPHA * s_dc_red + (1.0f - DC_ALPHA) * red_s;
     }
 
-    if (buf_full && ir_smooth_prev2 > 0) {
-        bool is_peak = (ir_smooth_prev > ir_smooth_prev2) && (ir_smooth_prev > ir_s);
-        bool is_valley = (ir_smooth_prev < ir_smooth_prev2) && (ir_smooth_prev < ir_s);
+    if (s_buf_full && s_ir_smooth_prev2 > 0) {
+        bool is_peak = (s_ir_smooth_prev > s_ir_smooth_prev2) && (s_ir_smooth_prev > ir_s);
+        bool is_valley = (s_ir_smooth_prev < s_ir_smooth_prev2) && (s_ir_smooth_prev < ir_s);
         uint32_t now_tick = xTaskGetTickCount();
 
-        if (is_peak && rising) {
-            uint32_t amplitude = ir_smooth_prev - valley_val;
+        if (is_peak && s_rising) {
+            uint32_t amplitude = s_ir_smooth_prev - s_valley_value;
 
-            if (amplitude > PEAK_MIN_HEIGHT && peak_tick > 0) {
-                uint32_t interval_ms = (now_tick - peak_tick) * portTICK_PERIOD_MS;
+            if (amplitude > PEAK_MIN_HEIGHT && s_peak_tick > 0) {
+                uint32_t interval_ms = (now_tick - s_peak_tick) * portTICK_PERIOD_MS;
 
                 if (interval_ms > 350 && interval_ms < 1500) {
                     int hr_new = (int)(60000 / interval_ms);
-                    hr_history[hr_idx % HR_BUF_SIZE] = hr_new;
-                    hr_idx++;
+                    s_hr_history[s_hr_index % HR_BUF_SIZE] = hr_new;
+                    s_hr_index++;
 
                     int hr_sum = 0;
                     int hr_cnt = 0;
                     for (int i = 0; i < HR_BUF_SIZE; i++) {
-                        if (hr_history[i] > 0) {
-                            hr_sum += hr_history[i];
+                        if (s_hr_history[i] > 0) {
+                            hr_sum += s_hr_history[i];
                             hr_cnt++;
                         }
                     }
@@ -106,11 +103,11 @@ void blood_sample_once(void)
                         b_data.heart = hr_sum / hr_cnt;
                     }
 
-                    float ac_ir = (float)(peak_val - valley_val);
+                    float ac_ir = (float)(s_peak_value - s_valley_value);
                     float ac_red = ac_ir * 0.8f;
 
-                    if (dc_ir > 0 && dc_red > 0 && ac_ir > 0) {
-                        float R = (ac_red / dc_red) / (ac_ir / dc_ir);
+                    if (s_dc_ir > 0 && s_dc_red > 0 && ac_ir > 0) {
+                        float R = (ac_red / s_dc_red) / (ac_ir / s_dc_ir);
                         float spo2 = 110.0f - 25.0f * R;
                         if (spo2 > 100.0f) {
                             spo2 = 100.0f;
@@ -125,19 +122,19 @@ void blood_sample_once(void)
                 }
             }
 
-            peak_val = ir_smooth_prev;
-            peak_tick = now_tick;
-            rising = false;
+            s_peak_value = s_ir_smooth_prev;
+            s_peak_tick = now_tick;
+            s_rising = false;
         }
 
         if (is_valley) {
-            valley_val = ir_smooth_prev;
-            rising = true;
+            s_valley_value = s_ir_smooth_prev;
+            s_rising = true;
         }
     }
 
-    ir_smooth_prev2 = ir_smooth_prev;
-    ir_smooth_prev = ir_s;
+    s_ir_smooth_prev2 = s_ir_smooth_prev;
+    s_ir_smooth_prev = ir_s;
 }
 
 void blood_detect(void)

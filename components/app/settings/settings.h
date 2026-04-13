@@ -10,6 +10,8 @@ extern "C" {
 #endif
 
 #define SETTINGS_DEFAULT_VOLUME 12
+#define SETTINGS_NVS_NAMESPACE  "sys_cfg"
+#define SETTINGS_NVS_KEY_VOLUME "volume"
 
 esp_err_t settings_init(void);
 uint8_t settings_get_volume(void);

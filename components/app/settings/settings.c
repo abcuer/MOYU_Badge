@@ -2,9 +2,6 @@
 
 #include "nvs.h"
 
-#define SETTINGS_NVS_NAMESPACE "sys_cfg"
-#define SETTINGS_NVS_KEY_VOLUME "volume"
-
 static uint8_t s_volume = SETTINGS_DEFAULT_VOLUME;
 
 static uint8_t settings_clamp_volume(uint8_t volume)

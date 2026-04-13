@@ -11,9 +11,15 @@
 extern "C" {
 #endif
 
-#define MAX98357_LRC_PIN  42
-#define MAX98357_BCLK_PIN 41
-#define MAX98357_DIN_PIN  40
+#define MAX98357_LRC_PIN               42
+#define MAX98357_BCLK_PIN              41
+#define MAX98357_DIN_PIN               40
+#define MAX98357_DMA_DESC_NUM          8
+#define MAX98357_DMA_FRAME_NUM         512
+#define MAX98357_MAX_INPUT_PCM_BYTES   4096U
+#define MAX98357_WRITE_CHUNK_BYTES     2048U
+#define MAX98357_PRELOAD_SILENCE_BYTES 512U
+#define MAX98357_I2S_PORT              I2S_NUM_1
 
 esp_err_t max98357_init(uint32_t sample_rate, uint8_t channels, uint8_t bits_per_sample);
 void max98357_deinit(void);

@@ -1,6 +1,22 @@
 #ifndef _APCFG_H_
 #define _APCFG_H_
+
+#include <stdbool.h>
+#include <stddef.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
 #include "wifi_manager.h"
+
+#define AP_WIFI_TAG                      "apcfg"
+#define AP_WIFI_INDEX_HTML_PATH          "/spiffs/apcfg.html"
+#define AP_WIFI_CONFIG_BIT               BIT0
+#define AP_WIFI_DNS_PORT                 53
+#define AP_WIFI_DNS_MAX_PACKET_SIZE      512
+#define AP_WIFI_SAVED_CONNECT_TIMEOUT_MS 40000
+#define AP_WIFI_NVS_NAMESPACE            "storage"
+#define AP_WIFI_NVS_KEY_SSID             "ssid"
+#define AP_WIFI_NVS_KEY_PASSWORD         "password"
 
 /** wifi功能和ap配网功能初始化
  * @param f wifi连接状态回调函数
