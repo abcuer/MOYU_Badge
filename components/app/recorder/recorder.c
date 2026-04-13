@@ -10,7 +10,7 @@
 #include "inmp441.h"
 #include "max98357.h"
 
-#define RECORDER_SAMPLE_RATE           24000
+#define RECORDER_SAMPLE_RATE           16000
 #define RECORDER_BITS_PER_SAMPLE       16
 #define RECORDER_CHANNELS              1
 #define RECORDER_CHUNK_SAMPLES         320

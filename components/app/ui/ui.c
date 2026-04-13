@@ -1159,7 +1159,7 @@ void draw_recorder_ui(u8g2_t *u8g2)
     int bar_w = (peak * 120) / 32767;
     char buf[24];
     const char *state_text = "Standby";
-    const char *hint_text = "Short: Rec  Long: Menu";
+    const char *hint_text = "Short:Rec Long:Menu";
 
     if (bar_w < 0) {
         bar_w = 0;
