@@ -1,7 +1,6 @@
 #ifndef __USER_TASK_H
 #define __USER_TASK_H
 
-#include "freertos/event_groups.h"
 #define WIFI_CONNECT_BIT    BIT0
 #define TIME_SYNC_BIT       BIT1 
 
@@ -12,7 +11,6 @@
 #define OLED_FAST_REFRESH_MS    30
 #define OLED_MEDIUM_REFRESH_MS  100
 #define OLED_SLOW_REFRESH_MS    200
-#define OLED_CLOCK_REFRESH_MS   500
 
 void start_sync_task(void *pvParameters);
 void start_sensor_task(void *pvParameters);

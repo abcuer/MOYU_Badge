@@ -52,7 +52,7 @@ static void onenet_mqtt_event_handler(void *event_handler_arg,
             cJSON *property_js = onenet_property_upload_dm();
             char *data = cJSON_PrintUnformatted(property_js);
             onenet_post_property_data(data);
-            onenet_ota_upload_version();
+            onenet_ota_schedule_version_upload();
             set_app_vaild(true);
             cJSON_free(data);
             cJSON_Delete(property_js);

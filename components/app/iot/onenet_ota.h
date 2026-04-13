@@ -30,4 +30,11 @@ void set_app_vaild(int vaild);
  */
 esp_err_t  onenet_ota_upload_version(void);
 
+/**
+ * 异步调度版本上报
+ * @param 无
+ * @return 无
+ */
+void onenet_ota_schedule_version_upload(void);
+
 #endif

@@ -5,6 +5,7 @@
 #include "esp_http_client.h"
 #include "onenet_token.h"
 #include "onenet_mqtt.h"
+#include "wifi_manager.h"
 #include "esp_log.h"
 #include "cJSON.h"
 #include "esp_ota_ops.h"
@@ -14,6 +15,10 @@
 #define TAG     "onenet_ota"
 
 #define     MAX_DATA_BUFF   1024
+#define     ONENET_OTA_HTTP_TIMEOUT_MS 15000
+#define     ONENET_VERSION_REPORT_DELAY_MS 2000
+#define     ONENET_VERSION_REPORT_RETRY_MAX 3
+#define     ONENET_VERSION_REPORT_RETRY_DELAY_MS 3000
 //ota基础url
 #define     ONENET_OTA_URL  "http://iot-api.heclouds.com/fuse-ota"
 //token合法时间戳
@@ -28,6 +33,16 @@ static int  task_id = 0;
 static char target_version[16] = {0}; 
 //ota任务是否在运行
 static bool ota_is_running = false;
+static TaskHandle_t s_version_report_task = NULL;
+static SemaphoreHandle_t s_ota_http_mutex = NULL;
+
+static SemaphoreHandle_t onenet_ota_http_mutex(void)
+{
+    if (s_ota_http_mutex == NULL) {
+        s_ota_http_mutex = xSemaphoreCreateMutex();
+    }
+    return s_ota_http_mutex;
+}
 
 
 static esp_err_t http_client_event_handler(esp_http_client_event_t *evt)
@@ -83,6 +98,7 @@ static esp_err_t onenet_ota_http_connect(const char* url,esp_http_client_method_
     {
         .url = url,
         .event_handler = http_client_event_handler,
+        .timeout_ms = ONENET_OTA_HTTP_TIMEOUT_MS,
     };
     //初始化结构体
     esp_http_client_handle_t http_client = esp_http_client_init(&config);	//初始化http连接
@@ -93,6 +109,13 @@ static esp_err_t onenet_ota_http_connect(const char* url,esp_http_client_method_
     }
 
     char* token = (char*)malloc(256);
+    SemaphoreHandle_t http_mutex = onenet_ota_http_mutex();
+    if(token == NULL)
+    {
+        ESP_LOGE(TAG, "malloc token fail");
+        esp_http_client_cleanup(http_client);
+        return ESP_ERR_NO_MEM;
+    }
     memset(token,0,256);
     //user_token_generate(token,SIG_METHOD_SHA256,1924833600,USER_ID,USER_ACCESS_KEY);
     dev_token_generate(token,SIG_METHOD_SHA256,TOKEN_TIMESTAMP,ONENET_PRODUCT_ID,NULL,ONENET_ACCESS_KEY);
@@ -107,9 +130,15 @@ static esp_err_t onenet_ota_http_connect(const char* url,esp_http_client_method_
         ESP_LOGI(TAG,"post data:%s",post_data);
         esp_http_client_set_post_field(http_client,post_data,strlen(post_data));
     }
+    if (http_mutex != NULL) {
+        xSemaphoreTake(http_mutex, portMAX_DELAY);
+    }
     data_buff_len = 0;
     memset(data_buff,0,sizeof(data_buff));
     esp_err_t err  = esp_http_client_perform(http_client);
+    if (http_mutex != NULL) {
+        xSemaphoreGive(http_mutex);
+    }
     free(token);
     esp_http_client_cleanup(http_client);
     return err;
@@ -146,6 +175,49 @@ esp_err_t onenet_ota_upload_version(void)
         return ret;
     }
     return ret;
+}
+
+static void onenet_ota_version_report_task(void *param)
+{
+    int retry = 0;
+
+    (void)param;
+    vTaskDelay(pdMS_TO_TICKS(ONENET_VERSION_REPORT_DELAY_MS));
+
+    while (retry < ONENET_VERSION_REPORT_RETRY_MAX) {
+        if (!wifi_manager_is_connect()) {
+            ESP_LOGW(TAG, "Skip version upload, Wi-Fi disconnected");
+            break;
+        }
+
+        if (onenet_ota_upload_version() == ESP_OK) {
+            ESP_LOGI(TAG, "Upload version success");
+            break;
+        }
+
+        retry++;
+        if (retry < ONENET_VERSION_REPORT_RETRY_MAX) {
+            ESP_LOGW(TAG, "Upload version retry %d/%d", retry + 1,
+                     ONENET_VERSION_REPORT_RETRY_MAX);
+            vTaskDelay(pdMS_TO_TICKS(ONENET_VERSION_REPORT_RETRY_DELAY_MS));
+        }
+    }
+
+    s_version_report_task = NULL;
+    vTaskDelete(NULL);
+}
+
+void onenet_ota_schedule_version_upload(void)
+{
+    if (s_version_report_task != NULL) {
+        return;
+    }
+
+    if (xTaskCreatePinnedToCore(onenet_ota_version_report_task, "ota_ver_report", 4096,
+                                NULL, 2, &s_version_report_task, 1) != pdPASS) {
+        s_version_report_task = NULL;
+        ESP_LOGE(TAG, "Create version report task failed");
+    }
 }
 
 esp_err_t  onenet_ota_check_task(const char* type,const char* version)
@@ -186,6 +258,7 @@ esp_err_t  onenet_ota_check_task(const char* type,const char* version)
     return ret;
 }
 
+// 向云平台上传升级信息
 esp_err_t onenet_ota_upload_status(int tid,int step)
 {
     char url[256];
@@ -226,6 +299,7 @@ static esp_err_t http_ota_init_callback(esp_http_client_handle_t http_client)
     return ESP_OK;
 }
 
+// OTA下载函数，返回错误码
 esp_err_t onenet_ota_download(int tid)
 {
     esp_err_t ota_finish_err = ESP_OK;

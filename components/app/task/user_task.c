@@ -33,7 +33,7 @@ static uint32_t oled_get_refresh_interval_ms(void)
     switch (mode)
     {
         case MODE_CLOCK:
-            return OLED_CLOCK_REFRESH_MS;
+            return OLED_SLOW_REFRESH_MS;
 
         case MODE_BLOOD:
         case MODE_BALL:
@@ -44,23 +44,23 @@ static uint32_t oled_get_refresh_interval_ms(void)
         case MODE_RECORDER:
             return (recorder_get_state() == RECORDER_STATE_IDLE)
                        ? OLED_SLOW_REFRESH_MS
-                       : OLED_FAST_REFRESH_MS;
+                       : OLED_MEDIUM_REFRESH_MS;
 
         case MODE_RADIO:
             return radio_ui_is_volume_editing()
-                       ? OLED_FAST_REFRESH_MS
+                       ? OLED_SLOW_REFRESH_MS
                        : OLED_MEDIUM_REFRESH_MS;
 
         case MODE_SETTING:
             if (setting_ui_is_volume_editing()) {
-                return OLED_FAST_REFRESH_MS;
+                return OLED_SLOW_REFRESH_MS;
             }
             return setting_ui_is_info_page()
                        ? OLED_SLOW_REFRESH_MS
                        : OLED_MEDIUM_REFRESH_MS;
 
         case MODE_GAME_SELECT:
-            return OLED_SLOW_REFRESH_MS;
+            return OLED_MEDIUM_REFRESH_MS;
 
         default:
             return OLED_MEDIUM_REFRESH_MS;
