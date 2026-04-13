@@ -25,8 +25,7 @@ void app_main(void)
     xTaskCreate(start_sensor_task, "sensor_task", 8192, NULL, 6, &sensor_task_handle);
     xTaskCreate(start_key_task, "key_task", 4196, NULL, 7, NULL);
     xTaskCreate(start_onenet_task, "upload_task", 8192, NULL, 3, NULL);
-
-    ota_mark_app_valid_if_needed();
+    
     settings_init();
     audio_player_init();
     recorder_init();

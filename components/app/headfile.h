@@ -27,7 +27,7 @@
 #include "wifi_manager.h"
 #include "onenet_mqtt.h"
 #include "onenet_dm.h"
-#include "ota.h"
+#include "onenet_ota.h"
 
 #include "ap_wifi.h"
 #include "mode.h"

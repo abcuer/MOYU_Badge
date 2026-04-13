@@ -55,6 +55,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
             break;
         }
         case WIFI_EVENT_STA_CONNECTED:  //WIFI连上路由器后，触发此事件
+            sta_connect_count = 0;
             ESP_LOGI(TAG, "Connected to AP");
             break;
         case WIFI_EVENT_STA_DISCONNECTED:   //WIFI从路由器断开连接后触发此事件
@@ -100,6 +101,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,int32_t event_i
         {
             case IP_EVENT_STA_GOT_IP:           //只有获取到路由器分配的IP，才认为是连上了路由器
                 ESP_LOGI(TAG,"Get ip address");
+                sta_connect_count = 0;
                 is_sta_connected = true;
                 if(wifi_state_cb)
                     wifi_state_cb(WIFI_STATE_CONNECTED);
@@ -131,6 +133,7 @@ void wifi_manager_init(p_wifi_state_callback f)
     //启动WIFI
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA) );         //设置工作模式为STA
     ESP_ERROR_CHECK(esp_wifi_start() );                         //启动WIFI
+    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_MIN_MODEM));
     
     ESP_LOGI(TAG, "wifi_init finished.");
 }
@@ -237,6 +240,7 @@ esp_err_t wifi_manager_connect(const char* ssid,const char* password)
         .sta = 
         {
 	        .threshold.authmode = WIFI_AUTH_WPA2_PSK,   //加密方式
+            .listen_interval = 3,
         },
     };
     snprintf((char*)wifi_config.sta.ssid,31,"%s",ssid);

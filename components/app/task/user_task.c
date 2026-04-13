@@ -5,11 +5,6 @@ volatile bool has_started_ap_config = false;
 
 static volatile bool s_sensor_power_sync_required = false;
 
-#define OLED_FAST_REFRESH_MS    30
-#define OLED_MEDIUM_REFRESH_MS  100
-#define OLED_SLOW_REFRESH_MS    200
-#define OLED_CLOCK_REFRESH_MS   1000
-
 static bool sensor_mode_needs_imu(void)
 {
     return mode == MODE_BALL ||

@@ -7,7 +7,12 @@
 
 #define SENSOR_PERIOD   20
 #define OLED_PERIOD     30
-#define onenet_PERIOD   1000 * 60 * 30
+#define onenet_PERIOD   (30*60*1000) 
+
+#define OLED_FAST_REFRESH_MS    30
+#define OLED_MEDIUM_REFRESH_MS  100
+#define OLED_SLOW_REFRESH_MS    200
+#define OLED_CLOCK_REFRESH_MS   500
 
 void start_sync_task(void *pvParameters);
 void start_sensor_task(void *pvParameters);

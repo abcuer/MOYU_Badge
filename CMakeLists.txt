@@ -6,12 +6,12 @@
 cmake_minimum_required(VERSION 3.16)
 
 # 根目录
-# 必须在 include 之前设置，注意路径层级
 set(EXTRA_COMPONENT_DIRS 
     "components/app"
     "components/bsp"
     "components/modules"
 )
 
+set(PROJECT_VER "1.0.1")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(MoYu_Badge)

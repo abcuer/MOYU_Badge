@@ -5,9 +5,9 @@ bool in_select = false;
 uint32_t last_action_time = 0;
 static bool ignore_first_long_press_after_wake = false;
 static bool s_radio_long_pending = false;
+static volatile bool s_idle_network_sleeping = false;
 
 extern TaskHandle_t sensor_task_handle;
-extern TaskHandle_t sync_task_handle;
 
 static void app_mode_set(ui_mode_e next_mode)
 {
@@ -58,6 +58,17 @@ static bool mode_is_idle_sleep_page(void)
 void key_scan(void)
 {
     key_event_e event = key_get_event(KEY_USER);
+
+    if (s_idle_network_sleeping) {
+        if (event != KEY_EVENT_NONE) {
+            s_idle_network_sleeping = false;
+            last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
+            ignore_first_long_press_after_wake = true;
+            s_radio_long_pending = false;
+            key_reset_fsm(KEY_USER);
+        }
+        return;
+    }
 
     if (!is_first_sync_done && ap_wifi_is_config_mode_active()) {
         if (event != KEY_EVENT_NONE) {
@@ -213,8 +224,11 @@ void key_scan(void)
 
 void enter_light_sleep(void)
 {
-    bool was_in_select = in_select;
+    if (s_idle_network_sleeping) {
+        return;
+    }
 
+    s_idle_network_sleeping = true;
     u8g2_SetPowerSave(&u8g2, 1);
     mpu6050_sleep(1);
     bmp280_sleep(1);
@@ -223,17 +237,10 @@ void enter_light_sleep(void)
     if (sensor_task_handle != NULL) {
         vTaskSuspend(sensor_task_handle);
     }
-    if (sync_task_handle != NULL) {
-        vTaskSuspend(sync_task_handle);
+
+    while (s_idle_network_sleeping) {
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
-
-    gpio_wakeup_enable(USER_KEY_PIN, GPIO_INTR_LOW_LEVEL);
-    esp_sleep_enable_gpio_wakeup();
-
-    gpio_intr_disable(USER_KEY_PIN);
-    key_reset_fsm(KEY_USER);
-
-    esp_light_sleep_start();
 
     u8g2_SetPowerSave(&u8g2, 0);
     sensor_request_power_sync();
@@ -241,22 +248,12 @@ void enter_light_sleep(void)
     if (sensor_task_handle != NULL) {
         vTaskResume(sensor_task_handle);
     }
-    if (sync_task_handle != NULL) {
-        vTaskResume(sync_task_handle);
-    }
 
-    in_select = was_in_select;
     ignore_first_long_press_after_wake = true;
     s_radio_long_pending = false;
     setting_ui_set_wifi_reset_armed(false);
     key_reset_fsm(KEY_USER);
     last_action_time = xTaskGetTickCount() * portTICK_PERIOD_MS;
-
-    gpio_wakeup_disable(USER_KEY_PIN);
-    while (gpio_get_level(USER_KEY_PIN) == 0) {
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-    gpio_intr_enable(USER_KEY_PIN);
 }
 
 bool mode_try_enter_light_sleep(void)
