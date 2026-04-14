@@ -2,7 +2,7 @@
 
 基于 `ESP32-S3` 的多功能 Badge 固件项目，集成时钟天气、血氧心率、体感游戏、网络电台、录音回放、Wi-Fi 配网、OneNET 上报和 OTA 升级能力。
 
-项目演示视频：[B 站 Demo](https://www.bilibili.com/video/BV14hXEBbEjP)
+## [📺视频演示](https://www.bilibili.com/video/BV1WnQiBKEhC)
 <p align="center">
   <img src=".doc/photo/a21b37fc72ce2b2841b74576ed895a4f.jpg" alt="成品" width="45%" />
   <img src=".doc/photo/7898da1f7a23fea588ae7295e2c53451.png" alt="PCB" width="45%" />
